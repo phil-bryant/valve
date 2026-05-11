@@ -18,6 +18,7 @@ let package = Package(
         .target(name: "ValveFeatures", dependencies: ["ValveDomain", "ValveNetworking", "ValveSecurity"]),
         .executableTarget(name: "ValveProvisioningApp", dependencies: ["ValveFeatures"]),
         .testTarget(name: "ValveDomainTests", dependencies: ["ValveDomain"]),
-        .testTarget(name: "ValveNetworkingTests", dependencies: ["ValveNetworking", "ValveDomain"])
+        .testTarget(name: "ValveNetworkingTests", dependencies: ["ValveNetworking", "ValveDomain"]),
+        .testTarget(name: "ValveFeaturesTests", dependencies: ["ValveFeatures", "ValveDomain"])
     ]
 )

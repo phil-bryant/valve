@@ -55,8 +55,8 @@ public struct AppContext: Sendable
 
   public static func liveFromEnvironment() -> AppContext
   { let env = ProcessInfo.processInfo.environment
-    let baseURLString = env["VALVE_BASE_URL"] ?? "http://localhost:8080"
-    let url = URL(string: baseURLString) ?? URL(string: "http://localhost:8080")!
+    let baseURLString = env["VALVE_BASE_URL"] ?? "http://localhost:8090"
+    let url = URL(string: baseURLString) ?? URL(string: "http://localhost:8090")!
     let valveEnvironment = ValveEnvironment(
       baseURL: url,
       tenantID: env["VALVE_TENANT_ID"] ?? "tenant-dev",
