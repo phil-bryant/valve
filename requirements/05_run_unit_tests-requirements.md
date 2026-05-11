@@ -37,10 +37,10 @@ Design: Execute `CREATE EXTENSION IF NOT EXISTS pgtap;` via local `psql` using c
 Tests:
 - Verify script invokes extension-create SQL before test-file execution.
 
-R030  Statement: Execute SQL unit tests before Go and Bats unit tests using fail-fast commands.
-Design: Run SQL test file with `-w -h localhost -p 5432 -d valve -v ON_ERROR_STOP=1 -f <sql-test-file>` using credentials from `R005`, then run `go test ./...` and `bats tests/sh` only after SQL tests succeed.
+R030  Statement: Execute SQL unit tests before Go and Bats unit tests using non-interactive fail-fast commands.
+Design: Run SQL test file with `-w -P pager=off -h localhost -p 5432 -d valve -v ON_ERROR_STOP=1 -f <sql-test-file>` using credentials from `R005`, then run `go test ./...` and `bats tests/sh` only after SQL tests succeed.
 Tests:
-- Verify test invocation includes `ON_ERROR_STOP=1`, configured database URL, and SQL test file path.
+- Verify test invocation includes `ON_ERROR_STOP=1`, `-P pager=off`, configured database URL, and SQL test file path.
 - Force SQL stage failure and verify `go test` is not attempted.
 - Force `go test` failure and verify script exits non-zero.
 - Verify `bats tests/sh` runs only after `go test ./...` succeeds.

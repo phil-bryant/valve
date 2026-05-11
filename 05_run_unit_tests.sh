@@ -52,6 +52,7 @@ fi
 #R015: Resolve SQL test file path from script directory.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SQL_TEST_FILE="${SCRIPT_DIR}/storage/sql/unit/ingest_schema_pgtap.sql"
+PSQL_COMMON_ARGS=(-w -P pager=off -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1)
 
 #R020: Fail clearly when SQL unit-test file is missing.
 if [ ! -f "$SQL_TEST_FILE" ]; then
@@ -61,11 +62,11 @@ fi
 
 #R025: Ensure pgTAP extension exists in target database.
 PGPASSWORD="$DB_PASSWORD" \
-  psql -w -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS pgtap;"
+  psql "${PSQL_COMMON_ARGS[@]}" -c "CREATE EXTENSION IF NOT EXISTS pgtap;"
 
 #R030: Execute SQL unit tests first with fail-fast psql settings.
 PGPASSWORD="$DB_PASSWORD" \
-  psql -w -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -f "$SQL_TEST_FILE"
+  psql "${PSQL_COMMON_ARGS[@]}" -f "$SQL_TEST_FILE"
 
 #R030: Run Go unit tests only after SQL unit tests pass.
 GO_TEST_OUTPUT_FILE="$(mktemp)"

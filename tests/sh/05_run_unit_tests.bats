@@ -190,6 +190,7 @@ setup() {
   #R030
   run bash "${FIXTURE_ROOT}/05_run_unit_tests.sh"
   [ "$status" -eq 0 ]
+  grep -F -- "-P pager=off" "${CALLS_LOG}"
   grep -F -- "-h localhost" "${CALLS_LOG}"
   grep -F -- "-p 5432" "${CALLS_LOG}"
   grep -F -- "-U valve" "${CALLS_LOG}"

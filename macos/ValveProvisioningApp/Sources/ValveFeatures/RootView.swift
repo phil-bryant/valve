@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import ValveDomain
 
@@ -138,6 +139,14 @@ public final class RootViewModel: ObservableObject
     }
   }
 
+  public func copyCredentialID(_ credentialID: String)
+  { let pasteboard = NSPasteboard.general
+    pasteboard.clearContents()
+    pasteboard.setString(credentialID, forType: .string)
+    lastMessage = "Copied credential id \(credentialID)"
+    Task { await context.auditLogger.write(action: "copy_credential_id", status: "ok", details: credentialID) }
+  }
+
   private func withRetry<T>(maxAttempts: Int, operation: @escaping @Sendable () async throws -> T) async throws -> T
   { var attempts = 0
     var value: T?
@@ -264,7 +273,24 @@ private struct InventoryView: View
         }
       }
       Table(model.records)
-      { TableColumn("Credential ID") { Text($0.credentialID) }
+      { TableColumn("Credential ID")
+        { record in
+          HStack(spacing: 8)
+          { Text(record.credentialID).textSelection(.enabled)
+            Button
+            { model.copyCredentialID(record.credentialID)
+            } label:
+            { Image(systemName: "doc.on.doc")
+            }
+            .buttonStyle(.plain)
+            .help("Copy credential ID")
+          }
+          .contextMenu
+          { Button("Copy Credential ID")
+            { model.copyCredentialID(record.credentialID)
+            }
+          }
+        }
         TableColumn("Status") { Text($0.status) }
         TableColumn("Device") { Text($0.deviceLabel) }
         TableColumn("Version") { Text($0.appVersion) }

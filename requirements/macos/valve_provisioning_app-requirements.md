@@ -20,6 +20,7 @@ Applies to SwiftUI operator client implementation files:
 `macos/ValveProvisioningApp/Tests/ValveNetworkingTests/ValveAPIClientTests.swift`
 `macos/ValveProvisioningApp/Tests/ValveFeaturesTests/AppContextTests.swift`
 `macos/ValveProvisioningApp/Tests/ValveFeaturesTests/AppLifecycleTests.swift`
+`macos/ValveProvisioningApp/Tests/ValveFeaturesTests/InventoryCopyTests.swift`
 
 R001  Statement: Provide a native macOS SwiftUI admin interface for credential provisioning lifecycle actions.
 Design: Implement module boundaries and SwiftUI workflows for register, revoke, rotate, and list operations against Valve APIs.
@@ -45,3 +46,8 @@ R020  Statement: Closing the UI window should terminate the app process so launc
 Design: Wire a lifecycle delegate in the macOS app that returns terminate-on-last-window-close behavior and bind it through `@NSApplicationDelegateAdaptor`.
 Tests:
 - Run package tests in `macos/ValveProvisioningApp` and verify `AppLifecycleTests` asserts terminate-after-last-window-close policy is enabled.
+
+R025  Statement: Inventory view must support direct copying of any provisioned credential ID.
+Design: Expose copy behavior in `RootViewModel` and wire inventory table credential rows with explicit copy affordances.
+Tests:
+- Run package tests in `macos/ValveProvisioningApp` and verify `InventoryCopyTests` asserts clipboard value and operator message update.
