@@ -565,7 +565,18 @@ run_dast_lane() {
   require_command curl
   require_command python3
   if [[ "${RUN_SCHEMATHESIS}" == "true" ]]; then
+    #R055: Validate Schemathesis schema contract before DAST boot/health/scan work.
     require_command schemathesis
+    if [[ ! -f "${SCHEMATHESIS_SCHEMA_PATH}" ]]; then
+      echo "❌ Schemathesis schema file not found: ${SCHEMATHESIS_SCHEMA_PATH}"
+      echo "Set SCHEMATHESIS_SCHEMA_PATH or add openapi/valve.v1.yaml."
+      exit 1
+    fi
+    if [[ ! -r "${SCHEMATHESIS_SCHEMA_PATH}" ]]; then
+      echo "❌ Schemathesis schema file is not readable: ${SCHEMATHESIS_SCHEMA_PATH}"
+      echo "Set SCHEMATHESIS_SCHEMA_PATH or fix schema file permissions."
+      exit 1
+    fi
   fi
   if [[ "${DAST_AUTO_BOOT}" == "true" ]]; then
     require_command go
@@ -625,10 +636,6 @@ run_dast_lane() {
       "Property-based API testing driven by the OpenAPI specification." \
       "Finds contract mismatches by generating and exercising request scenarios." \
       "https://schemathesis.readthedocs.io/"
-    if [[ ! -f "${SCHEMATHESIS_SCHEMA_PATH}" ]]; then
-      echo "❌ Schemathesis schema file not found: ${SCHEMATHESIS_SCHEMA_PATH}"
-      exit 1
-    fi
     echo "▶ Running Schemathesis against ${SCHEMATHESIS_SCHEMA_PATH}"
     set +e
     run_with_timeout "${SCHEMATHESIS_TIMEOUT_SECONDS}" \

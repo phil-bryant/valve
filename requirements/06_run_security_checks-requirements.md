@@ -73,8 +73,16 @@ Tests:
 - Run DAST lane with stubs and verify console output includes runner resolution, timeout, report artifact, and live log artifact lines.
 - Run DAST lane with ZAP CLI fallback and verify invocation includes `-quickprogress` and streamed output is captured in `dast-zap.log`.
 
+R055  Statement: Enforce a strict Schemathesis schema contract with deterministic preflight validation.
+Design: When `RUN_SCHEMATHESIS=true`, default `SCHEMATHESIS_SCHEMA_PATH` to `${SCRIPT_DIR}/openapi/valve.v1.yaml`; verify the schema path is readable before DAST auto-boot, health probing, and scanner execution; fail with explicit remediation guidance when the schema is missing or unreadable.
+Tests:
+- Run with default `RUN_SCHEMATHESIS=true` and no `SCHEMATHESIS_SCHEMA_PATH` override, and verify Schemathesis runs successfully using the canonical `openapi/valve.v1.yaml`.
+- Run with `RUN_SCHEMATHESIS=true` and an unreadable/missing schema path, and verify fail-fast output contains deterministic schema-path diagnostics and remediation guidance.
+- Run with `SCHEMATHESIS_SCHEMA_PATH` override to an alternate readable file and verify Schemathesis execution uses the override path.
+
 ## Changelog
 
+- 2026-05-10: Added strict Schemathesis schema preflight requirement with canonical `openapi/valve.v1.yaml` contract.
 - 2026-05-10: Added default DAST suppression for ZAP daemon UI alert `10062` to avoid deterministic host-runner false positives.
 - 2026-05-10: Added live ZAP progress streaming and `dast-zap.log` artifact requirements for DAST observability.
 - 2026-05-10: Removed `VALVE_DATABASE_URL_1PSA_REF` requirement for DAST auto-boot; DB URL is now composed directly from `localhost_postgres_valve` fields.

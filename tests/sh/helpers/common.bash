@@ -33,6 +33,25 @@ copy_script_to_fixture() {
   chmod +x "${FIXTURE_ROOT}/${script_name}"
 }
 
+copy_openapi_to_fixture() {
+  local source_dir
+  local schema_file
+  local copied_any=false
+  source_dir="$(repo_root)/openapi"
+  if [[ -d "${source_dir}" ]]; then
+    mkdir -p "${FIXTURE_ROOT}/openapi"
+    for schema_file in "${source_dir}"/*.yaml; do
+      if [[ -f "${schema_file}" ]]; then
+        cp "${schema_file}" "${FIXTURE_ROOT}/openapi/"
+        copied_any=true
+      fi
+    done
+    if [[ "${copied_any}" != "true" ]]; then
+      return 0
+    fi
+  fi
+}
+
 stub_cmd() {
   local name="$1"
   shift

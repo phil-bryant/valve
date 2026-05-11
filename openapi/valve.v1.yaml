@@ -1,0 +1,22 @@
+openapi: 3.0.3
+info:
+  title: Valve API
+  version: 1.0.0
+  description: Minimal OpenAPI contract used for DAST Schemathesis preflight and baseline contract coverage.
+paths:
+  /healthz:
+    get:
+      summary: Health probe
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - ok
+                properties:
+                  ok:
+                    type: boolean

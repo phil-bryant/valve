@@ -140,7 +140,17 @@ make_schemathesis_stub() {
   cat > "${STUB_BIN}/schemathesis" <<'EOF'
 #!/usr/bin/env bash
 junit_path=""
+schema_path=""
+seen_run=false
 while [ "$#" -gt 0 ]; do
+  if [ "$seen_run" = "false" ] && [ "$1" = "run" ]; then
+    seen_run=true
+    shift
+    continue
+  fi
+  if [ "$seen_run" = "true" ] && [ -z "$schema_path" ]; then
+    schema_path="$1"
+  fi
   if [ "$1" = "--report-junit-path" ] && [ "$#" -ge 2 ]; then
     junit_path="$2"
     shift 2
@@ -150,6 +160,9 @@ while [ "$#" -gt 0 ]; do
 done
 if [ -n "$junit_path" ]; then
   printf '%s\n' '<testsuite tests="1" failures="0"></testsuite>' > "$junit_path"
+fi
+if [ -n "${SCHEMATHESIS_STUB_LOG_PATH:-}" ]; then
+  printf '%s\n' "$schema_path" > "${SCHEMATHESIS_STUB_LOG_PATH}"
 fi
 printf '%s\n' 'schemathesis stub run'
 exit "${SCHEMATHESIS_STUB_EXIT:-0}"
@@ -195,6 +208,7 @@ EOF
 setup_fixture() {
   create_repo_fixture
   copy_script_to_fixture "06_run_security_checks.sh"
+  copy_openapi_to_fixture
 }
 
 setup() {
@@ -404,8 +418,6 @@ EOF
   make_curl_stub 0
   make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
   make_schemathesis_stub 0
-  mkdir -p "${FIXTURE_ROOT}/openapi"
-  printf '%s\n' 'openapi: 3.0.3' > "${FIXTURE_ROOT}/openapi/valve.v1.yaml"
   run env RUN_SAST=false DAST_AUTO_BOOT=false RUN_SCHEMATHESIS=true PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
     bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
   [ "$status" -eq 0 ]
@@ -418,12 +430,51 @@ EOF
   make_curl_stub 0
   make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
   make_schemathesis_stub 1
-  mkdir -p "${FIXTURE_ROOT}/openapi"
-  printf '%s\n' 'openapi: 3.0.3' > "${FIXTURE_ROOT}/openapi/valve.v1.yaml"
   run env RUN_SAST=false DAST_AUTO_BOOT=false RUN_SCHEMATHESIS=true SECURITY_FAIL_ON_HIGH_CRITICAL=true PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
     bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
   [ "$status" -eq 1 ]
   [[ "$output" == *"DAST) gate failed"* ]]
+}
+
+@test "uses canonical default Schemathesis schema path contract" {
+  #R055
+  make_curl_stub 0
+  make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
+  make_schemathesis_stub 0
+  run env RUN_SAST=false DAST_AUTO_BOOT=false RUN_SCHEMATHESIS=true SCHEMATHESIS_STUB_LOG_PATH="${TEST_TMPDIR}/schemathesis-schema.log" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+  [ "$status" -eq 0 ]
+  [[ "$(cat "${TEST_TMPDIR}/schemathesis-schema.log")" == "${FIXTURE_ROOT}/openapi/valve.v1.yaml" ]]
+}
+
+@test "fails fast when Schemathesis schema path is missing before DAST boot health scan" {
+  #R055
+  make_go_stub
+  make_1psa_stub
+  make_curl_stub 0
+  make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
+  make_schemathesis_stub 0
+  run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=true GO_STUB_LOG_PATH="${TEST_TMPDIR}/go-stub.log" SCHEMATHESIS_SCHEMA_PATH="${FIXTURE_ROOT}/openapi/missing.v1.yaml" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Schemathesis schema file not found:"* ]]
+  [[ "$output" == *"Set SCHEMATHESIS_SCHEMA_PATH or add openapi/valve.v1.yaml."* ]]
+  [ ! -f "${TEST_TMPDIR}/go-stub.log" ]
+  [ ! -f "${FIXTURE_ROOT}/.security-reports/dast-health.log" ]
+  [ ! -f "${FIXTURE_ROOT}/.security-reports/dast-zap-report.json" ]
+}
+
+@test "uses SCHEMATHESIS_SCHEMA_PATH override when provided" {
+  #R055
+  local override_schema="${FIXTURE_ROOT}/openapi/custom.v1.yaml"
+  make_curl_stub 0
+  make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
+  make_schemathesis_stub 0
+  printf '%s\n' 'openapi: 3.0.3' > "${override_schema}"
+  run env RUN_SAST=false DAST_AUTO_BOOT=false RUN_SCHEMATHESIS=true SCHEMATHESIS_SCHEMA_PATH="${override_schema}" SCHEMATHESIS_STUB_LOG_PATH="${TEST_TMPDIR}/schemathesis-override.log" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+  [ "$status" -eq 0 ]
+  [[ "$(cat "${TEST_TMPDIR}/schemathesis-override.log")" == "${override_schema}" ]]
 }
 
 @test "skips DAST lane only when explicitly opted out" {
