@@ -3,6 +3,7 @@ package credentials
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -81,6 +82,21 @@ func (h *Handler) VerificationLookup(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+func (h *Handler) UploadTarget(w http.ResponseWriter, r *http.Request) {
+	var req UploadTargetRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	resp, err := h.service.UploadTarget(r.Context(), req)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", fmt.Sprintf("private, max-age=%d", resp.TTLSeconds))
+	writeJSON(w, http.StatusOK, resp)
+}
+
 // #R010: Translate domain errors into stable HTTP response codes.
 func writeServiceError(w http.ResponseWriter, err error) {
 	switch {
@@ -91,7 +107,7 @@ func writeServiceError(w http.ResponseWriter, err error) {
 	case errors.Is(err, ErrNotFound):
 		writeError(w, http.StatusNotFound, "not found")
 	case errors.Is(err, ErrTenantMismatch):
-		writeError(w, http.StatusForbidden, "unauthorized")
+		writeError(w, http.StatusConflict, "tenant/account mismatch")
 	case errors.Is(err, ErrInvalidState):
 		writeError(w, http.StatusConflict, "invalid credential state")
 	default:

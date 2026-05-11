@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -49,6 +50,22 @@ func run(logger *slog.Logger) error {
 
 	authorizer := auth.DevAuthorizer{AllowAll: cfg.DevAuthAllowAll}
 	service := credentials.NewService(store, authorizer, cfg.UploadEndpoint, cfg.HMACModeEnabled, cfg.DevAuthAllowAll)
+	allowedHosts := cfg.UploadTargetAllowedHosts
+	if len(allowedHosts) == 0 {
+		parsedUploadURL, parseErr := url.Parse(cfg.UploadEndpoint)
+		if parseErr != nil || parsedUploadURL.Hostname() == "" {
+			return errors.New("VALVE_UPLOAD_ENDPOINT must include a valid host")
+		}
+		allowedHosts = []string{parsedUploadURL.Hostname()}
+	}
+	if err := service.ConfigureUploadTargetDiscovery(credentials.UploadTargetDiscoveryConfig{
+		TTLSeconds:               cfg.UploadTargetTTLSeconds,
+		RoutingVersion:           cfg.UploadTargetRoutingVersion,
+		TenantUploadEndpointByID: cfg.UploadTargetTenantRoutes,
+		AllowedUploadTargetHosts: allowedHosts,
+	}); err != nil {
+		return err
+	}
 	handler := credentials.NewHandler(service)
 	server := httpserver.New(cfg.Addr, logger, store, handler, cfg.ServiceAuthKey)
 

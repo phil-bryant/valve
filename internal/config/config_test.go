@@ -14,6 +14,10 @@ func TestLoadReturnsConfigFromEnvironment(t *testing.T) {
 	t.Setenv("VALVE_DEV_AUTH_ALLOW_ALL", "true")
 	t.Setenv("VALVE_HMAC_MODE_ENABLED", "true")
 	t.Setenv("VALVE_SERVICE_AUTH_KEY", "runtime-value-placeholder")
+	t.Setenv("VALVE_UPLOAD_TARGET_TTL_SECONDS", "600")
+	t.Setenv("VALVE_UPLOAD_TARGET_ROUTING_VERSION", "routes-2026-05-11")
+	t.Setenv("VALVE_UPLOAD_TARGET_ALLOWED_HOSTS", "ingest.example.com,ingest-alt.example.com")
+	t.Setenv("VALVE_UPLOAD_TARGET_TENANT_ROUTES", "tenant_a=https://ingest-alt.example.com/v1/events/batch")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
@@ -23,6 +27,15 @@ func TestLoadReturnsConfigFromEnvironment(t *testing.T) {
 	}
 	if !cfg.DevAuthAllowAll || !cfg.HMACModeEnabled || cfg.ServiceAuthKey != "runtime-value-placeholder" { // pragma: allowlist secret
 		t.Fatalf("unexpected config booleans/secrets: %+v", cfg)
+	}
+	if cfg.UploadTargetTTLSeconds != 600 || cfg.UploadTargetRoutingVersion != "routes-2026-05-11" {
+		t.Fatalf("unexpected upload target discovery defaults: %+v", cfg)
+	}
+	if len(cfg.UploadTargetAllowedHosts) != 2 || cfg.UploadTargetAllowedHosts[0] != "ingest.example.com" {
+		t.Fatalf("unexpected upload target host allowlist: %+v", cfg.UploadTargetAllowedHosts)
+	}
+	if cfg.UploadTargetTenantRoutes["tenant_a"] == "" {
+		t.Fatalf("expected parsed tenant upload target route")
 	}
 }
 
@@ -51,5 +64,15 @@ func TestParseBoolOrDefaultFallsBackOnInvalidValue(t *testing.T) {
 	}
 	if parseBoolOrDefault("VALVE_DEV_AUTH_ALLOW_ALL", false) {
 		t.Fatalf("expected fallback false for invalid bool env")
+	}
+}
+
+func TestLoadRejectsNonPositiveUploadTargetTTL(t *testing.T) {
+	t.Setenv("VALVE_DATABASE_URL", "postgres://localhost:5432/valve?sslmode=disable")
+	t.Setenv("VALVE_UPLOAD_ENDPOINT", "https://ingest.example.com/v1/events/batch")
+	t.Setenv("VALVE_UPLOAD_TARGET_TTL_SECONDS", "0")
+	_, err := Load()
+	if err == nil || err.Error() != "VALVE_UPLOAD_TARGET_TTL_SECONDS must be > 0" {
+		t.Fatalf("expected non-positive ttl error, got %v", err)
 	}
 }

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 	"time"
 
 	"valve/internal/auth"
@@ -29,21 +31,89 @@ type Store interface {
 }
 
 type Service struct {
-	store           Store
-	authorizer      auth.Authorizer
-	uploadEndpoint  string
-	hmacModeEnabled bool
-	devAllowNoActor bool
+	store                    Store
+	authorizer               auth.Authorizer
+	uploadEndpoint           string
+	hmacModeEnabled          bool
+	devAllowNoActor          bool
+	uploadTargetTTL          time.Duration
+	routingVersion           string
+	tenantUploadEndpointByID map[string]string
+	allowedUploadTargetHosts map[string]struct{}
 }
 
 func NewService(store Store, authorizer auth.Authorizer, uploadEndpoint string, hmacModeEnabled bool, devAllowNoActor bool) *Service {
-	return &Service{
-		store:           store,
-		authorizer:      authorizer,
-		uploadEndpoint:  uploadEndpoint,
-		hmacModeEnabled: hmacModeEnabled,
-		devAllowNoActor: devAllowNoActor,
+	allowedHosts := map[string]struct{}{}
+	if parsed, err := url.Parse(uploadEndpoint); err == nil {
+		if hostname := strings.ToLower(parsed.Hostname()); hostname != "" {
+			allowedHosts[hostname] = struct{}{}
+		}
 	}
+	return &Service{
+		store:                    store,
+		authorizer:               authorizer,
+		uploadEndpoint:           uploadEndpoint,
+		hmacModeEnabled:          hmacModeEnabled,
+		devAllowNoActor:          devAllowNoActor,
+		uploadTargetTTL:          5 * time.Minute,
+		routingVersion:           "v1",
+		tenantUploadEndpointByID: map[string]string{},
+		allowedUploadTargetHosts: allowedHosts,
+	}
+}
+
+type UploadTargetDiscoveryConfig struct {
+	TTLSeconds               int
+	RoutingVersion           string
+	TenantUploadEndpointByID map[string]string
+	AllowedUploadTargetHosts []string
+}
+
+func (s *Service) ConfigureUploadTargetDiscovery(cfg UploadTargetDiscoveryConfig) error {
+	if cfg.TTLSeconds <= 0 {
+		return fmt.Errorf("%w: upload target ttl_seconds must be > 0", ErrInvalidInput)
+	}
+	if cfg.RoutingVersion == "" {
+		return fmt.Errorf("%w: routing_version is required", ErrInvalidInput)
+	}
+
+	allowedHosts := map[string]struct{}{}
+	for _, raw := range cfg.AllowedUploadTargetHosts {
+		host := normalizeAllowedHost(raw)
+		if host == "" {
+			continue
+		}
+		allowedHosts[host] = struct{}{}
+	}
+
+	parsedDefault, err := parseUploadTargetURL(s.uploadEndpoint)
+	if err != nil {
+		return err
+	}
+	if _, ok := allowedHosts[parsedDefault.Hostname()]; !ok {
+		return fmt.Errorf("%w: upload endpoint host is not allowlisted", ErrInvalidInput)
+	}
+
+	routes := make(map[string]string, len(cfg.TenantUploadEndpointByID))
+	for tenantID, endpoint := range cfg.TenantUploadEndpointByID {
+		if tenantID == "" {
+			return fmt.Errorf("%w: tenant route key cannot be empty", ErrInvalidInput)
+		}
+		parsedRoute, parseErr := parseUploadTargetURL(endpoint)
+		if parseErr != nil {
+			return parseErr
+		}
+		if _, ok := allowedHosts[parsedRoute.Hostname()]; !ok {
+			return fmt.Errorf("%w: tenant route host is not allowlisted", ErrInvalidInput)
+		}
+		routes[tenantID] = parsedRoute.String()
+	}
+
+	s.uploadTargetTTL = time.Duration(cfg.TTLSeconds) * time.Second
+	s.routingVersion = cfg.RoutingVersion
+	s.tenantUploadEndpointByID = routes
+	s.allowedUploadTargetHosts = allowedHosts
+	return nil
 }
 
 // #R001: Register credentials through validation, authorization, persistence, and audit writes.
@@ -277,6 +347,112 @@ func (s *Service) VerificationLookup(ctx context.Context, credentialID string) (
 		Action:       "credential_lookup_for_verification",
 	})
 	return resp, nil
+}
+
+func (s *Service) UploadTarget(ctx context.Context, req UploadTargetRequest) (UploadTargetResponse, error) {
+	if err := ValidateUploadTargetRequest(req); err != nil {
+		return UploadTargetResponse{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+	}
+	record, _, _, err := s.store.GetCredential(ctx, req.CredentialID)
+	if err != nil {
+		return UploadTargetResponse{}, ErrNotFound
+	}
+	if record.InstallID != req.InstallID {
+		return UploadTargetResponse{}, ErrNotFound
+	}
+	if record.TenantID != req.TenantID {
+		return UploadTargetResponse{}, ErrTenantMismatch
+	}
+	if record.Status != StatusActive {
+		return UploadTargetResponse{}, ErrUnauthorized
+	}
+
+	uploadURL, err := s.resolveUploadEndpoint(req.TenantID)
+	if err != nil {
+		return UploadTargetResponse{}, err
+	}
+
+	expiresAt := time.Now().UTC().Add(s.uploadTargetTTL)
+	ttlSeconds := int(s.uploadTargetTTL / time.Second)
+	_ = s.store.WriteAudit(ctx, AuditEntry{
+		TenantID:     req.TenantID,
+		InstallID:    req.InstallID,
+		CredentialID: req.CredentialID,
+		Action:       "upload_target_discovered",
+		MetadataJSON: fmt.Sprintf(`{"routing_version":%q}`, s.routingVersion),
+	})
+	return UploadTargetResponse{
+		UploadURL:      uploadURL,
+		ExpiresAt:      expiresAt,
+		TTLSeconds:     ttlSeconds,
+		RoutingVersion: s.routingVersion,
+	}, nil
+}
+
+func (s *Service) resolveUploadEndpoint(tenantID string) (string, error) {
+	uploadURL := s.uploadEndpoint
+	if tenantRoute, ok := s.tenantUploadEndpointByID[tenantID]; ok {
+		uploadURL = tenantRoute
+	}
+	parsed, err := parseUploadTargetURL(uploadURL)
+	if err != nil {
+		return "", err
+	}
+	if len(s.allowedUploadTargetHosts) > 0 {
+		if _, ok := s.allowedUploadTargetHosts[parsed.Hostname()]; !ok {
+			return "", fmt.Errorf("%w: resolved upload target host is not allowlisted", ErrInvalidInput)
+		}
+	}
+	return parsed.String(), nil
+}
+
+func parseUploadTargetURL(raw string) (*url.URL, error) {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid upload target url", ErrInvalidInput)
+	}
+	if parsed.Scheme != "https" && !(parsed.Scheme == "http" && isLocalHostname(parsed.Hostname())) {
+		return nil, fmt.Errorf("%w: upload target url must use https", ErrInvalidInput)
+	}
+	if parsed.Hostname() == "" {
+		return nil, fmt.Errorf("%w: upload target url host is required", ErrInvalidInput)
+	}
+	parsed.Host = strings.ToLower(parsed.Host)
+	return parsed, nil
+}
+
+func isLocalHostname(host string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(host))
+	switch normalized {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeAllowedHost(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+	}
+	if strings.Contains(trimmed, "://") {
+		parsed, err := url.Parse(trimmed)
+		if err == nil && parsed.Hostname() != "" {
+			return strings.ToLower(parsed.Hostname())
+		}
+		return ""
+	}
+	if strings.Contains(trimmed, "/") {
+		return ""
+	}
+	if strings.Contains(trimmed, ":") {
+		host, _, found := strings.Cut(trimmed, ":")
+		if found && host != "" {
+			return strings.ToLower(host)
+		}
+	}
+	return strings.ToLower(trimmed)
 }
 
 func firstNonEmpty(values ...string) string {

@@ -52,6 +52,9 @@ func New(addr string, logger *slog.Logger, checker ReadinessChecker, handler *cr
 			return security.ServiceAuthMiddleware(serviceAuthKey, next)
 		}).Get("/{credential_id}/verification", handler.VerificationLookup)
 	})
+	router.With(func(next http.Handler) http.Handler {
+		return security.ServiceAuthMiddleware(serviceAuthKey, next)
+	}).Post("/v1/piston/upload-target", handler.UploadTarget)
 
 	return &http.Server{
 		Addr:         addr,

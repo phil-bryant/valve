@@ -45,3 +45,15 @@ func TestReadyzFailsWhenDatabaseUnavailable(t *testing.T) {
 		t.Fatalf("expected 503, got %d", rec.Code)
 	}
 }
+
+func TestUploadTargetRouteRequiresServiceAuth(t *testing.T) {
+	logger := slog.Default()
+	srv := New(":8090", logger, testChecker{}, &credentials.Handler{}, "svc-key")
+	req := httptest.NewRequest(http.MethodPost, "/v1/piston/upload-target", nil)
+	rec := httptest.NewRecorder()
+
+	srv.Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}

@@ -50,6 +50,55 @@ func TestHandlerListAndVerificationLookup(t *testing.T) {
 	}
 }
 
+func TestHandlerUploadTargetAndConflictMapping(t *testing.T) {
+	store := newMockStore()
+	recID := "cred_upload_handler"
+	store.records[recID] = CredentialRecord{
+		CredentialID: recID,
+		TenantID:     "tenant",
+		InstallID:    "install",
+		Status:       StatusActive,
+	}
+	service := NewService(store, handlerAuthorizer{allow: true}, "https://ingest.example.com/v1/events/batch", false, false)
+	if err := service.ConfigureUploadTargetDiscovery(UploadTargetDiscoveryConfig{
+		TTLSeconds:               300,
+		RoutingVersion:           "routing-v1",
+		AllowedUploadTargetHosts: []string{"ingest.example.com"},
+	}); err != nil {
+		t.Fatalf("configure discovery failed: %v", err)
+	}
+	handler := NewHandler(service)
+
+	payload := UploadTargetRequest{
+		TenantID:     "tenant",
+		InstallID:    "install",
+		CredentialID: recID,
+	}
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/v1/piston/upload-target", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	handler.UploadTarget(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 upload target status, got %d", rec.Code)
+	}
+	if rec.Header().Get("Cache-Control") == "" {
+		t.Fatalf("expected cache-control header to be set")
+	}
+
+	badPayload := UploadTargetRequest{
+		TenantID:     "tenant-other",
+		InstallID:    "install",
+		CredentialID: recID,
+	}
+	badBody, _ := json.Marshal(badPayload)
+	badReq := httptest.NewRequest(http.MethodPost, "/v1/piston/upload-target", bytes.NewReader(badBody))
+	badRec := httptest.NewRecorder()
+	handler.UploadTarget(badRec, badReq)
+	if badRec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 tenant mismatch status, got %d", badRec.Code)
+	}
+}
+
 type handlerAuthorizer struct {
 	allow bool
 }

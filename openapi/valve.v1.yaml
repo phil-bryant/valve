@@ -20,3 +20,99 @@ paths:
                 properties:
                   ok:
                     type: boolean
+  /v1/piston/upload-target:
+    post:
+      summary: Discover active upload target for a provisioned installation
+      security:
+        - ValveServiceKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UploadTargetRequest"
+      responses:
+        "200":
+          description: Active upload target and cache TTL for this installation credential.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadTargetResponse"
+        "401":
+          description: Invalid or revoked credential, or missing service authentication.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Credential is not active for discovery.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Unknown install or credential.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Tenant and account context mismatch.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Transient control-plane failure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  securitySchemes:
+    ValveServiceKey:
+      type: apiKey
+      in: header
+      name: X-Valve-Service-Key
+  schemas:
+    UploadTargetRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - install_id
+        - credential_id
+      properties:
+        tenant_id:
+          type: string
+        install_id:
+          type: string
+        credential_id:
+          type: string
+    UploadTargetResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - upload_url
+        - expires_at
+        - ttl_seconds
+      properties:
+        upload_url:
+          type: string
+          format: uri
+        expires_at:
+          type: string
+          format: date-time
+        ttl_seconds:
+          type: integer
+          minimum: 1
+        routing_version:
+          type: string
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - error
+      properties:
+        error:
+          type: string

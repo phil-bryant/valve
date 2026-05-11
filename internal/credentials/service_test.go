@@ -475,6 +475,161 @@ func TestCredentialIDsAreOpaqueAndNonSequential(t *testing.T) {
 	}
 }
 
+func TestUploadTargetReturnsDefaultRouteAndTTL(t *testing.T) {
+	store := newMockStore()
+	credentialID := "cred_upload_default"
+	store.records[credentialID] = CredentialRecord{
+		CredentialID: credentialID,
+		TenantID:     "tenant_abc",
+		InstallID:    "install_1",
+		Status:       StatusActive,
+	}
+	svc := NewService(store, auth.DevAuthorizer{AllowAll: true}, "https://ingest.example.com/v1/events/batch", true, false)
+	if err := svc.ConfigureUploadTargetDiscovery(UploadTargetDiscoveryConfig{
+		TTLSeconds:               120,
+		RoutingVersion:           "routing-v1",
+		AllowedUploadTargetHosts: []string{"ingest.example.com"},
+	}); err != nil {
+		t.Fatalf("configure discovery failed: %v", err)
+	}
+
+	resp, err := svc.UploadTarget(context.Background(), UploadTargetRequest{
+		TenantID:     "tenant_abc",
+		InstallID:    "install_1",
+		CredentialID: credentialID,
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if resp.UploadURL != "https://ingest.example.com/v1/events/batch" {
+		t.Fatalf("unexpected upload url %q", resp.UploadURL)
+	}
+	if resp.TTLSeconds != 120 {
+		t.Fatalf("unexpected ttl %d", resp.TTLSeconds)
+	}
+	if resp.RoutingVersion != "routing-v1" {
+		t.Fatalf("unexpected routing version %q", resp.RoutingVersion)
+	}
+}
+
+func TestUploadTargetUsesTenantRouteForEndpointRotation(t *testing.T) {
+	store := newMockStore()
+	credentialID := "cred_upload_rotation"
+	store.records[credentialID] = CredentialRecord{
+		CredentialID: credentialID,
+		TenantID:     "tenant_abc",
+		InstallID:    "install_1",
+		Status:       StatusActive,
+	}
+	svc := NewService(store, auth.DevAuthorizer{AllowAll: true}, "https://ingest.example.com/v1/events/batch", true, false)
+	if err := svc.ConfigureUploadTargetDiscovery(UploadTargetDiscoveryConfig{
+		TTLSeconds:               300,
+		RoutingVersion:           "routing-v2",
+		AllowedUploadTargetHosts: []string{"ingest.example.com", "ingest-eu.example.com"},
+		TenantUploadEndpointByID: map[string]string{
+			"tenant_abc": "https://ingest-eu.example.com/v1/events/batch",
+		},
+	}); err != nil {
+		t.Fatalf("configure discovery failed: %v", err)
+	}
+
+	resp, err := svc.UploadTarget(context.Background(), UploadTargetRequest{
+		TenantID:     "tenant_abc",
+		InstallID:    "install_1",
+		CredentialID: credentialID,
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if resp.UploadURL != "https://ingest-eu.example.com/v1/events/batch" {
+		t.Fatalf("expected rotated route, got %q", resp.UploadURL)
+	}
+}
+
+func TestUploadTargetRejectsRevokedCredential(t *testing.T) {
+	store := newMockStore()
+	credentialID := "cred_upload_revoked"
+	store.records[credentialID] = CredentialRecord{
+		CredentialID: credentialID,
+		TenantID:     "tenant_abc",
+		InstallID:    "install_1",
+		Status:       StatusRevoked,
+	}
+	svc := NewService(store, auth.DevAuthorizer{AllowAll: true}, "https://ingest.example.com/v1/events/batch", true, false)
+	if err := svc.ConfigureUploadTargetDiscovery(UploadTargetDiscoveryConfig{
+		TTLSeconds:               300,
+		RoutingVersion:           "routing-v1",
+		AllowedUploadTargetHosts: []string{"ingest.example.com"},
+	}); err != nil {
+		t.Fatalf("configure discovery failed: %v", err)
+	}
+
+	_, err := svc.UploadTarget(context.Background(), UploadTargetRequest{
+		TenantID:     "tenant_abc",
+		InstallID:    "install_1",
+		CredentialID: credentialID,
+	})
+	if !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("expected ErrUnauthorized, got %v", err)
+	}
+}
+
+func TestUploadTargetTenantMismatchReturnsConflictError(t *testing.T) {
+	store := newMockStore()
+	credentialID := "cred_upload_mismatch"
+	store.records[credentialID] = CredentialRecord{
+		CredentialID: credentialID,
+		TenantID:     "tenant_abc",
+		InstallID:    "install_1",
+		Status:       StatusActive,
+	}
+	svc := NewService(store, auth.DevAuthorizer{AllowAll: true}, "https://ingest.example.com/v1/events/batch", true, false)
+	if err := svc.ConfigureUploadTargetDiscovery(UploadTargetDiscoveryConfig{
+		TTLSeconds:               300,
+		RoutingVersion:           "routing-v1",
+		AllowedUploadTargetHosts: []string{"ingest.example.com"},
+	}); err != nil {
+		t.Fatalf("configure discovery failed: %v", err)
+	}
+
+	_, err := svc.UploadTarget(context.Background(), UploadTargetRequest{
+		TenantID:     "tenant_other",
+		InstallID:    "install_1",
+		CredentialID: credentialID,
+	})
+	if !errors.Is(err, ErrTenantMismatch) {
+		t.Fatalf("expected ErrTenantMismatch, got %v", err)
+	}
+}
+
+func TestUploadTargetUnknownInstallReturnsNotFound(t *testing.T) {
+	store := newMockStore()
+	credentialID := "cred_upload_not_found"
+	store.records[credentialID] = CredentialRecord{
+		CredentialID: credentialID,
+		TenantID:     "tenant_abc",
+		InstallID:    "install_1",
+		Status:       StatusActive,
+	}
+	svc := NewService(store, auth.DevAuthorizer{AllowAll: true}, "https://ingest.example.com/v1/events/batch", true, false)
+	if err := svc.ConfigureUploadTargetDiscovery(UploadTargetDiscoveryConfig{
+		TTLSeconds:               300,
+		RoutingVersion:           "routing-v1",
+		AllowedUploadTargetHosts: []string{"ingest.example.com"},
+	}); err != nil {
+		t.Fatalf("configure discovery failed: %v", err)
+	}
+
+	_, err := svc.UploadTarget(context.Background(), UploadTargetRequest{
+		TenantID:     "tenant_abc",
+		InstallID:    "install_other",
+		CredentialID: credentialID,
+	})
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
 type mockStore struct {
 	records map[string]CredentialRecord
 	audits  []AuditEntry

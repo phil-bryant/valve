@@ -108,6 +108,19 @@ type VerificationResponse struct {
 	RevokedAt      *time.Time `json:"revoked_at"`
 }
 
+type UploadTargetRequest struct {
+	TenantID     string `json:"tenant_id"`
+	InstallID    string `json:"install_id"`
+	CredentialID string `json:"credential_id"`
+}
+
+type UploadTargetResponse struct {
+	UploadURL      string    `json:"upload_url"`
+	ExpiresAt      time.Time `json:"expires_at"`
+	TTLSeconds     int       `json:"ttl_seconds"`
+	RoutingVersion string    `json:"routing_version,omitempty"`
+}
+
 type AuditEntry struct {
 	ActorUserID  string
 	TenantID     string

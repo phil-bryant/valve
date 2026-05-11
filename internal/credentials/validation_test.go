@@ -38,3 +38,18 @@ func TestValidateRotateScenarios(t *testing.T) {
 		t.Fatalf("expected invalid new key error")
 	}
 }
+
+func TestValidateUploadTargetRequestScenarios(t *testing.T) {
+	req := UploadTargetRequest{
+		TenantID:     "tenant",
+		InstallID:    "install",
+		CredentialID: "cred_abc",
+	}
+	if err := ValidateUploadTargetRequest(req); err != nil {
+		t.Fatalf("expected valid upload target request, got %v", err)
+	}
+	req.CredentialID = ""
+	if err := ValidateUploadTargetRequest(req); err == nil {
+		t.Fatalf("expected credential id validation error")
+	}
+}

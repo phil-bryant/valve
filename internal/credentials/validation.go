@@ -93,3 +93,16 @@ func ValidateRotate(req RotateRequest, allowEmptyActor bool, hmacEnabled bool) e
 	}
 	return nil
 }
+
+func ValidateUploadTargetRequest(req UploadTargetRequest) error {
+	if req.TenantID == "" {
+		return errors.New("tenant_id is required")
+	}
+	if req.InstallID == "" {
+		return errors.New("install_id is required")
+	}
+	if req.CredentialID == "" {
+		return errors.New("credential_id is required")
+	}
+	return nil
+}
