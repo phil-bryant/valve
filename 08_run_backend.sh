@@ -118,7 +118,9 @@ if [ -z "${VALVE_UPLOAD_ENDPOINT:-}" ]; then
 fi
 
 VALVE_ADDR="${VALVE_ADDR:-:8090}"
+VALVE_DEV_AUTH_ALLOW_ALL="${VALVE_DEV_AUTH_ALLOW_ALL:-true}"
 #R020: Launch backend in foreground with deterministic default bind address.
 echo "▶ Launching Valve backend on ${VALVE_ADDR}"
 echo "ℹ️  Upload endpoint: ${VALVE_UPLOAD_ENDPOINT}"
-VALVE_ADDR="${VALVE_ADDR}" VALVE_DATABASE_URL="${VALVE_DATABASE_URL}" VALVE_UPLOAD_ENDPOINT="${VALVE_UPLOAD_ENDPOINT}" go run ./cmd/valve
+echo "ℹ️  Dev authorizer allow-all: ${VALVE_DEV_AUTH_ALLOW_ALL}"
+VALVE_ADDR="${VALVE_ADDR}" VALVE_DATABASE_URL="${VALVE_DATABASE_URL}" VALVE_UPLOAD_ENDPOINT="${VALVE_UPLOAD_ENDPOINT}" VALVE_DEV_AUTH_ALLOW_ALL="${VALVE_DEV_AUTH_ALLOW_ALL}" go run ./cmd/valve

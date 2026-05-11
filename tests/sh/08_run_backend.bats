@@ -24,6 +24,7 @@ fi
 echo "VALVE_ADDR=${VALVE_ADDR:-}" >> "${CALLS_LOG}"
 echo "VALVE_DATABASE_URL=${VALVE_DATABASE_URL:-}" >> "${CALLS_LOG}"
 echo "VALVE_UPLOAD_ENDPOINT=${VALVE_UPLOAD_ENDPOINT:-}" >> "${CALLS_LOG}"
+echo "VALVE_DEV_AUTH_ALLOW_ALL=${VALVE_DEV_AUTH_ALLOW_ALL:-}" >> "${CALLS_LOG}"
 exit "${GO_STUB_EXIT_CODE:-0}"
 EOF
   chmod +x "${STUB_BIN}/go"
@@ -142,4 +143,18 @@ teardown() {
   run env PATH="${PATH}" VALVE_ADDR=":9999" VALVE_UPLOAD_ENDPOINT="https://upload" bash "${FIXTURE_ROOT}/08_run_backend.sh"
   [ "$status" -eq 0 ]
   grep -F "VALVE_ADDR=:9999" "${CALLS_LOG}"
+}
+
+@test "uses dev authorizer allow-all true by default" {
+  #R020
+  run env PATH="${PATH}" VALVE_UPLOAD_ENDPOINT="https://upload" bash "${FIXTURE_ROOT}/08_run_backend.sh"
+  [ "$status" -eq 0 ]
+  grep -F "VALVE_DEV_AUTH_ALLOW_ALL=true" "${CALLS_LOG}"
+}
+
+@test "uses explicit dev authorizer override when provided" {
+  #R020
+  run env PATH="${PATH}" VALVE_DEV_AUTH_ALLOW_ALL="false" VALVE_UPLOAD_ENDPOINT="https://upload" bash "${FIXTURE_ROOT}/08_run_backend.sh"
+  [ "$status" -eq 0 ]
+  grep -F "VALVE_DEV_AUTH_ALLOW_ALL=false" "${CALLS_LOG}"
 }
