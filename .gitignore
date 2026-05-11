@@ -6,3 +6,6 @@ bin/*
 .gomodcache/
 .security-reports/
 backups
+.build/
+**/.build/
+**/.swiftpm/
