@@ -66,6 +66,12 @@ if [ "${1:-}" = "-f" ]; then
     localhost_postgres_valve:password)
       printf '%s\n' "${VALVE_PASSWORD-valve-password}"
       ;;
+    localhost_postgres_valve:database)
+      printf '%s\n' "${ONEPSA_VALVE_DATABASE-valve}"
+      ;;
+    localhost_postgres_valve:schema)
+      printf '%s\n' "${ONEPSA_VALVE_SCHEMA-valve}"
+      ;;
     *)
       exit 1
       ;;
@@ -130,6 +136,24 @@ EOF
   [[ "$output" == *"Failed to resolve valve port from 1psa item"* ]]
 }
 
+@test "fails when valve 1psa database lookup is empty" {
+  #R005
+  run env ONEPSA_VALVE_DATABASE= sh "${FIXTURE_ROOT}/04_verify_deploy_database.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Failed to resolve valve database name from 1psa item"* ]]
+}
+
+@test "fails when valve 1psa schema lookup is empty or invalid" {
+  #R005
+  run env ONEPSA_VALVE_SCHEMA= sh "${FIXTURE_ROOT}/04_verify_deploy_database.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Failed to resolve valve schema name from 1psa item"* ]]
+
+  run env ONEPSA_VALVE_SCHEMA="bad-schema" sh "${FIXTURE_ROOT}/04_verify_deploy_database.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Failed to resolve valve schema name from 1psa item"* ]]
+}
+
 @test "fails when psql is unavailable" {
   #R010
   rm -f "${STUB_BIN}/psql"
@@ -180,15 +204,16 @@ EOF
   [ "$(printf '%s' "$output" | grep -c "✅ PASS:")" -eq 1 ]
 }
 
-@test "uses fail-fast psql options with fixed local target and valve user" {
+@test "uses fail-fast psql options with 1psa-resolved target and valve user" {
   #R035
   : > "${PSQL_LOG}"
   make_psql_happy
-  run env ONEPSA_VALVE_HOST=db.internal ONEPSA_VALVE_PORT=6543 sh "${FIXTURE_ROOT}/04_verify_deploy_database.sh"
+  run env ONEPSA_VALVE_HOST=db.internal ONEPSA_VALVE_PORT=6543 ONEPSA_VALVE_DATABASE=valve_shadow ONEPSA_VALVE_SCHEMA=valve_app sh "${FIXTURE_ROOT}/04_verify_deploy_database.sh"
   [ "$status" -eq 0 ]
   grep -F -- "-h db.internal" "${PSQL_LOG}"
   grep -F -- "-p 6543" "${PSQL_LOG}"
   grep -F -- "-U valve" "${PSQL_LOG}"
-  grep -F -- "-d valve" "${PSQL_LOG}"
+  grep -F -- "-d valve_shadow" "${PSQL_LOG}"
+  grep -F -- "table_schema = 'valve_app'" "${PSQL_LOG}"
   grep -F "ON_ERROR_STOP=1" "${PSQL_LOG}"
 }

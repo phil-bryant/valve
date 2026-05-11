@@ -5,7 +5,6 @@ set -eu
 #R005: Resolve valve credential from dedicated 1psa item.
 VALVE_PSA_ITEM="${VALVE_PSA_ITEM:-localhost_postgres_valve}"
 VALVE_PSA_FIELD="${VALVE_PSA_FIELD:-password}"
-DB_NAME="valve"
 DB_USER="valve"
 
 if ! command -v 1psa >/dev/null; then
@@ -37,6 +36,30 @@ DB_PORT="$(read_1psa_secret "$VALVE_PSA_ITEM" "port")"
 case "$DB_PORT" in
   ''|*[!0-9]*)
     echo "❌ FAIL: Failed to resolve valve port from 1psa item: ${VALVE_PSA_ITEM}"
+    exit 1
+    ;;
+esac
+DB_NAME="$(read_1psa_secret "$VALVE_PSA_ITEM" "database")"
+if [ -z "$DB_NAME" ]; then
+  echo "❌ FAIL: Failed to resolve valve database name from 1psa item: ${VALVE_PSA_ITEM}"
+  exit 1
+fi
+DB_SCHEMA="$(read_1psa_secret "$VALVE_PSA_ITEM" "schema")"
+if [ -z "$DB_SCHEMA" ]; then
+  echo "❌ FAIL: Failed to resolve valve schema name from 1psa item: ${VALVE_PSA_ITEM}"
+  exit 1
+fi
+case "$DB_SCHEMA" in
+  [A-Za-z_]*)
+    ;;
+  *)
+    echo "❌ FAIL: Failed to resolve valve schema name from 1psa item: ${VALVE_PSA_ITEM}"
+    exit 1
+    ;;
+esac
+case "$DB_SCHEMA" in
+  *[!A-Za-z0-9_]*)
+    echo "❌ FAIL: Failed to resolve valve schema name from 1psa item: ${VALVE_PSA_ITEM}"
     exit 1
     ;;
 esac
@@ -72,7 +95,7 @@ comma_join_lines() {
   printf '%s' "$1" | tr '\n' ',' | sed 's/,$//'
 }
 
-echo "🔎 Verifying valve database schema on ${DB_HOST}:${DB_PORT}/${DB_NAME} as ${DB_USER}..."
+echo "🔎 Verifying valve database schema on ${DB_HOST}:${DB_PORT}/${DB_NAME} schema ${DB_SCHEMA} as ${DB_USER}..."
 
 #R015: Verify required valve credential tables exist.
 echo "- checking required tables..."
@@ -84,7 +107,7 @@ missing_tables="$(
     SELECT expected.table_name
     FROM expected
     LEFT JOIN information_schema.tables tables
-      ON tables.table_schema = 'public'
+      ON tables.table_schema = '${DB_SCHEMA}'
      AND tables.table_name = expected.table_name
      AND tables.table_type = 'BASE TABLE'
     WHERE tables.table_name IS NULL
@@ -110,7 +133,7 @@ missing_indexes="$(
     SELECT expected.index_name
     FROM expected
     LEFT JOIN pg_indexes idx
-      ON idx.schemaname = 'public'
+      ON idx.schemaname = '${DB_SCHEMA}'
      AND idx.tablename = 'valve_credentials'
      AND idx.indexname = expected.index_name
     WHERE idx.indexname IS NULL
@@ -134,7 +157,7 @@ if [ "$(db_scalar "
     JOIN pg_namespace ns
       ON ns.oid = rel.relnamespace
     WHERE con.contype = 'u'
-      AND ns.nspname = 'public'
+      AND ns.nspname = '${DB_SCHEMA}'
       AND rel.relname = 'valve_credentials'
       AND con.conname = 'valve_credentials_tenant_id_install_id_credential_id_key'
   );

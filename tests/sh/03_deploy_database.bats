@@ -44,6 +44,12 @@ if [ "${1:-}" = "-f" ]; then
     localhost_postgres_valve:password)
       printf '%s\n' "${VALVE_PASSWORD-valve-password}"
       ;;
+    localhost_postgres_valve:database)
+      printf '%s\n' "${ONEPSA_VALVE_DATABASE-valve}"
+      ;;
+    localhost_postgres_valve:schema)
+      printf '%s\n' "${ONEPSA_VALVE_SCHEMA-valve}"
+      ;;
     *)
       exit 1
       ;;
@@ -108,6 +114,24 @@ setup() {
   [[ "$output" == *"Failed to resolve valve port from 1psa item"* ]]
 }
 
+@test "fails when valve 1psa database lookup is empty" {
+  #R005
+  run env ONEPSA_VALVE_DATABASE= bash "${FIXTURE_ROOT}/03_deploy_database.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Failed to resolve valve database name from 1psa item"* ]]
+}
+
+@test "fails when valve 1psa schema lookup is empty or invalid" {
+  #R005
+  run env ONEPSA_VALVE_SCHEMA= bash "${FIXTURE_ROOT}/03_deploy_database.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Failed to resolve valve schema name from 1psa item"* ]]
+
+  run env ONEPSA_VALVE_SCHEMA="bad-schema" bash "${FIXTURE_ROOT}/03_deploy_database.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Failed to resolve valve schema name from 1psa item"* ]]
+}
+
 @test "fails when psql is unavailable" {
   #R010
   rm -f "${STUB_BIN}/psql"
@@ -135,13 +159,16 @@ setup() {
 
 @test "applies schema using fail-fast psql flags and 1psa credentials" {
   #R025
-  run env ONEPSA_VALVE_HOST=db.internal ONEPSA_VALVE_PORT=6543 bash "${FIXTURE_ROOT}/03_deploy_database.sh"
+  run env ONEPSA_VALVE_HOST=db.internal ONEPSA_VALVE_PORT=6543 ONEPSA_VALVE_DATABASE=valve_shadow ONEPSA_VALVE_SCHEMA=valve_app bash "${FIXTURE_ROOT}/03_deploy_database.sh"
   [ "$status" -eq 0 ]
   grep -F -- "-U postgres" "${CALLS_LOG}"
   grep -F -- "-h db.internal" "${CALLS_LOG}"
   grep -F -- "-p 6543" "${CALLS_LOG}"
   grep -F -- "-U valve" "${CALLS_LOG}"
-  grep -F -- "-d valve" "${CALLS_LOG}"
+  grep -F -- "-d valve_shadow" "${CALLS_LOG}"
+  grep -F "CREATE SCHEMA IF NOT EXISTS valve_app AUTHORIZATION valve;" "${CALLS_LOG}"
+  grep -F "ALTER ROLE valve IN DATABASE valve_shadow SET search_path TO valve_app;" "${CALLS_LOG}"
+  grep -F "SET search_path TO valve_app;" "${CALLS_LOG}"
   grep -F "ON_ERROR_STOP=1" "${CALLS_LOG}"
   grep -F "storage/schema.sql" "${CALLS_LOG}"
 }
