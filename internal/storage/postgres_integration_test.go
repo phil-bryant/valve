@@ -13,6 +13,10 @@ import (
 )
 
 func TestPostgresIntegrationCredentialLifecycle(t *testing.T) {
+	// #R001: Store initializes postgres pool and readiness interactions.
+	// #R005: Credential lifecycle persistence is validated end-to-end.
+	// #R010: Audit and verification persistence paths are exercised.
+	// #R015: Schema application from SQL file is required for integration setup.
 	databaseURL := integrationDatabaseURL(t)
 	ctx := context.Background()
 

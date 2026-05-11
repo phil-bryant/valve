@@ -1,5 +1,7 @@
 package credentials
 
+// #R001: Publish canonical request signing contract text for integrators.
+// #R005: Include both Ed25519 and HMAC verification semantics in shared contract.
 const SigningContract = `
 Piston -> Manifold request signing contract:
 

@@ -2,6 +2,7 @@ package credentials
 
 import "time"
 
+// #R001: Canonical credential mode and lifecycle status constants.
 const (
 	ModeEd25519    = "ed25519"
 	ModeHMACSHA256 = "hmac_sha256"
@@ -11,6 +12,7 @@ const (
 	StatusRotated = "rotated"
 )
 
+// #R005: API request and response payload models for credential operations.
 type RegisterRequest struct {
 	TenantID       string `json:"tenant_id"`
 	ActorUserID    string `json:"actor_user_id"`
@@ -70,6 +72,7 @@ type RotateResponse struct {
 	Secret           string `json:"secret,omitempty"`
 }
 
+// #R010: Persisted credential and audit model definitions across storage boundaries.
 type CredentialRecord struct {
 	CredentialID           string     `json:"credential_id"`
 	TenantID               string     `json:"tenant_id"`

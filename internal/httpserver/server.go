@@ -17,6 +17,7 @@ type ReadinessChecker interface {
 	Ping(ctx context.Context) error
 }
 
+// #R001: Build router with baseline middleware and structured request logging.
 func New(addr string, logger *slog.Logger, checker ReadinessChecker, handler *credentials.Handler, serviceAuthKey string) *http.Server {
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
@@ -24,6 +25,7 @@ func New(addr string, logger *slog.Logger, checker ReadinessChecker, handler *cr
 	router.Use(middleware.Recoverer)
 	router.Use(requestLogMiddleware(logger))
 
+	// #R005: Expose health and readiness probes with dependency checks.
 	router.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
@@ -40,6 +42,7 @@ func New(addr string, logger *slog.Logger, checker ReadinessChecker, handler *cr
 		_, _ = w.Write([]byte("ready"))
 	})
 
+	// #R010: Route credential APIs and secure verification with service authentication.
 	router.Route("/v1/valve/credentials", func(r chi.Router) {
 		r.Post("/register", handler.RegisterCredential)
 		r.Post("/revoke", handler.RevokeCredential)

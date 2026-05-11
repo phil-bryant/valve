@@ -15,6 +15,7 @@ type Config struct {
 	ServiceAuthKey  string
 }
 
+// #R001: Resolve environment-backed config values with defaults for optional fields.
 func Load() (Config, error) {
 	cfg := Config{
 		Addr:            getEnvOrDefault("VALVE_ADDR", ":8090"),
@@ -25,6 +26,7 @@ func Load() (Config, error) {
 		ServiceAuthKey:  os.Getenv("VALVE_SERVICE_AUTH_KEY"),
 	}
 
+	// #R005: Enforce required database and upload endpoint settings before boot.
 	if cfg.DatabaseURL == "" {
 		return Config{}, errors.New("VALVE_DATABASE_URL is required")
 	}
@@ -42,6 +44,7 @@ func getEnvOrDefault(key string, fallback string) string {
 	return value
 }
 
+// #R010: Parse booleans safely and fall back when env values are invalid.
 func parseBoolOrDefault(key string, fallback bool) bool {
 	value := os.Getenv(key)
 	if value == "" {

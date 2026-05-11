@@ -16,6 +16,7 @@ func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
 }
 
+// #R001: Decode register/revoke/rotate requests and dispatch to service layer.
 func (h *Handler) RegisterCredential(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -58,6 +59,7 @@ func (h *Handler) RotateCredential(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// #R005: Map query and URL inputs to list/verification service lookups.
 func (h *Handler) ListCredentials(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.URL.Query().Get("tenant_id")
 	installID := r.URL.Query().Get("install_id")
@@ -79,6 +81,7 @@ func (h *Handler) VerificationLookup(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// #R010: Translate domain errors into stable HTTP response codes.
 func writeServiceError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrInvalidInput):

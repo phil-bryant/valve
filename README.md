@@ -59,10 +59,10 @@ psql "$VALVE_DATABASE_URL" -f internal/storage/schema.sql
 ## Run Locally
 
 ```bash
-export VALVE_DATABASE_URL="postgres://postgres:postgres@localhost:5432/valve?sslmode=disable"
+export VALVE_DATABASE_URL="postgres://localhost:5432/valve?sslmode=disable"
 export VALVE_UPLOAD_ENDPOINT="https://ingest.example.com/v1/events/batch"
 export VALVE_DEV_AUTH_ALLOW_ALL=true
-export VALVE_SERVICE_AUTH_KEY="dev-service-key"
+export VALVE_SERVICE_AUTH_KEY="set-runtime-value-in-your-shell" # pragma: allowlist secret
 
 go run ./cmd/valve
 ```

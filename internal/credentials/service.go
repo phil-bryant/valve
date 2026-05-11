@@ -46,6 +46,7 @@ func NewService(store Store, authorizer auth.Authorizer, uploadEndpoint string, 
 	}
 }
 
+// #R001: Register credentials through validation, authorization, persistence, and audit writes.
 func (s *Service) Register(ctx context.Context, req RegisterRequest) (RegisterResponse, error) {
 	if err := ValidateRegister(req, s.devAllowNoActor, s.hmacModeEnabled); err != nil {
 		return RegisterResponse{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
@@ -120,6 +121,7 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (RegisterRe
 	}, nil
 }
 
+// #R005: Revoke active credentials with tenant ownership checks and audit events.
 func (s *Service) Revoke(ctx context.Context, req RevokeRequest) (RevokeResponse, error) {
 	if err := ValidateRevoke(req, s.devAllowNoActor); err != nil {
 		return RevokeResponse{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
@@ -164,6 +166,7 @@ func (s *Service) Revoke(ctx context.Context, req RevokeRequest) (RevokeResponse
 	}, nil
 }
 
+// #R010: Rotate credentials by replacing active key material and recording lineage.
 func (s *Service) Rotate(ctx context.Context, req RotateRequest) (RotateResponse, error) {
 	if err := ValidateRotate(req, s.devAllowNoActor, s.hmacModeEnabled); err != nil {
 		return RotateResponse{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
@@ -247,6 +250,7 @@ func (s *Service) Rotate(ctx context.Context, req RotateRequest) (RotateResponse
 	}, nil
 }
 
+// #R015: Validate read-only lookup inputs and normalize missing-resource semantics.
 func (s *Service) List(ctx context.Context, tenantID string, installID string) (ListResponse, error) {
 	if tenantID == "" || installID == "" {
 		return ListResponse{}, fmt.Errorf("%w: tenant_id and install_id are required", ErrInvalidInput)

@@ -1,3 +1,4 @@
+-- #R001: Credential table with lifecycle state and integrity constraints.
 CREATE TABLE IF NOT EXISTS valve_credentials (
     credential_id TEXT PRIMARY KEY,
 
@@ -28,6 +29,7 @@ CREATE TABLE IF NOT EXISTS valve_credentials (
     UNIQUE (tenant_id, install_id, credential_id)
 );
 
+-- #R005: Query indexes for tenant/install and status lookups.
 CREATE INDEX IF NOT EXISTS idx_valve_credentials_tenant_install
 ON valve_credentials(tenant_id, install_id);
 
@@ -37,6 +39,7 @@ ON valve_credentials(status);
 CREATE INDEX IF NOT EXISTS idx_valve_credentials_tenant_status
 ON valve_credentials(tenant_id, status);
 
+-- #R010: Audit log table for credential operation events and metadata.
 CREATE TABLE IF NOT EXISTS valve_audit_log (
     id BIGSERIAL PRIMARY KEY,
     occurred_at TIMESTAMPTZ NOT NULL DEFAULT now(),

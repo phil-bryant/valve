@@ -19,6 +19,7 @@ import (
 	"valve/internal/storage"
 )
 
+// #R001: Bootstrap logger and execute top-level run lifecycle.
 func main() {
 	logger := logging.NewLogger()
 	if err := run(logger); err != nil {
@@ -27,6 +28,7 @@ func main() {
 	}
 }
 
+// #R005: Build runtime dependencies before serving network traffic.
 func run(logger *slog.Logger) error {
 	cfg, err := config.Load()
 	if err != nil {
@@ -59,6 +61,7 @@ func run(logger *slog.Logger) error {
 		close(errCh)
 	}()
 
+	// #R010: Coordinate graceful shutdown from signal or server error paths.
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 

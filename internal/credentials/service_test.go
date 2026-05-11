@@ -12,6 +12,10 @@ import (
 )
 
 func TestRegisterEd25519CredentialSucceeds(t *testing.T) {
+	// #R001: Registration validates, authorizes, persists, and returns active credentials.
+	// #R005: Revoke flow enforces tenant ownership and lifecycle transitions.
+	// #R010: Rotation flow replaces active credentials and records lineage.
+	// #R015: Read-only list and verification lookups enforce required identifiers.
 	store := newMockStore()
 	svc := NewService(store, auth.DevAuthorizer{AllowAll: true}, "https://ingest.example.com/v1/events/batch", false, false)
 

@@ -20,6 +20,9 @@ func (t testChecker) Ping(_ context.Context) error {
 }
 
 func TestHealthzReturns200(t *testing.T) {
+	// #R001: Router boots with middleware and serves health endpoint.
+	// #R005: Readiness endpoint reports dependency failure.
+	// #R010: Credential route graph uses service-auth middleware in server construction.
 	logger := slog.Default()
 	srv := New(":8090", logger, testChecker{}, &credentials.Handler{}, "svc-key")
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)

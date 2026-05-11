@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"valve/internal/credentials"
@@ -14,11 +16,13 @@ import (
 )
 
 var ErrNotFound = errors.New("not found")
+const approvedSchemaPath = "internal/storage/schema.sql"
 
 type PostgresStore struct {
 	pool *pgxpool.Pool
 }
 
+// #R001: Manage postgres pool creation and lifecycle health checks.
 func NewPostgresStore(ctx context.Context, databaseURL string) (*PostgresStore, error) {
 	pool, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
@@ -35,8 +39,13 @@ func (s *PostgresStore) Ping(ctx context.Context) error {
 	return s.pool.Ping(ctx)
 }
 
+// #R015: Apply SQL schema content loaded from file during bootstrap.
 func (s *PostgresStore) ApplySchemaFromFile(ctx context.Context, schemaPath string) error {
-	schema, err := os.ReadFile(schemaPath)
+	// #R020: Reject non-approved schema paths before any disk access.
+	if filepath.Clean(schemaPath) != filepath.Clean(approvedSchemaPath) {
+		return fmt.Errorf("schemaPath must match %s", approvedSchemaPath)
+	}
+	schema, err := os.ReadFile(approvedSchemaPath)
 	if err != nil {
 		return err
 	}
@@ -44,6 +53,7 @@ func (s *PostgresStore) ApplySchemaFromFile(ctx context.Context, schemaPath stri
 	return err
 }
 
+// #R005: Persist and retrieve credential lifecycle records across store operations.
 func (s *PostgresStore) CreateCredential(ctx context.Context, rec credentials.CredentialRecord, hmacSecretEncrypted []byte, hmacSecretHash string) error {
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO valve_credentials (
@@ -157,6 +167,7 @@ func (s *PostgresStore) RotateCredential(ctx context.Context, oldCredentialID st
 	return tx.Commit(ctx)
 }
 
+// #R010: Persist audit and verification data with normalized null handling.
 func (s *PostgresStore) WriteAudit(ctx context.Context, audit credentials.AuditEntry) error {
 	metadataJSON := audit.MetadataJSON
 	if metadataJSON == "" {

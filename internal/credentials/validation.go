@@ -7,6 +7,7 @@ import (
 	"fmt"
 )
 
+// #R001: Validate register payloads, mode constraints, and key requirements.
 func ValidateRegister(req RegisterRequest, allowEmptyActor bool, hmacEnabled bool) error {
 	if req.TenantID == "" {
 		return errors.New("tenant_id is required")
@@ -44,6 +45,7 @@ func ValidateRegister(req RegisterRequest, allowEmptyActor bool, hmacEnabled boo
 	return nil
 }
 
+// #R005: Validate revoke payload identifiers and actor policy constraints.
 func ValidateRevoke(req RevokeRequest, allowEmptyActor bool) error {
 	if req.TenantID == "" {
 		return errors.New("tenant_id is required")
@@ -57,6 +59,7 @@ func ValidateRevoke(req RevokeRequest, allowEmptyActor bool) error {
 	return nil
 }
 
+// #R010: Validate rotation payloads including mode-specific replacement key checks.
 func ValidateRotate(req RotateRequest, allowEmptyActor bool, hmacEnabled bool) error {
 	if req.TenantID == "" {
 		return errors.New("tenant_id is required")

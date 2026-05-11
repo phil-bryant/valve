@@ -1,0 +1,17 @@
+package credentials
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestSigningContractContainsCanonicalElements(t *testing.T) {
+	// #R001: Contract publishes canonical headers and string format.
+	// #R005: Contract documents Ed25519 and HMAC signing semantics.
+	required := []string{"X-Manifold-Credential-ID", "Canonical string", "Ed25519 mode", "HMAC fallback mode"}
+	for _, token := range required {
+		if !strings.Contains(SigningContract, token) {
+			t.Fatalf("expected contract to contain %q", token)
+		}
+	}
+}
