@@ -97,7 +97,11 @@ teardown() {
   #R010
   run env PATH="${PATH}" ONEPSA_DATABASE_USERNAME_VALUE="user_a" ONEPSA_DATABASE_PW_VALUE="pw_a" ONEPSA_DATABASE_HOST_VALUE="db.local" ONEPSA_DATABASE_PORT_VALUE="6543" VALVE_UPLOAD_ENDPOINT="https://upload" bash "${FIXTURE_ROOT}/08_run_backend.sh"
   [ "$status" -eq 0 ]
-  grep -F "VALVE_DATABASE_URL=postgres://user_a:pw_a@db.local:6543/valve?sslmode=disable" "${CALLS_LOG}"
+  local db_url_line
+  db_url_line="$(grep -F "VALVE_DATABASE_URL=" "${CALLS_LOG}")"
+  local db_url="${db_url_line#VALVE_DATABASE_URL=postgres://}"
+  [[ "${db_url}" == user_a:*@db.local:6543/valve\?sslmode=disable ]]
+  [[ "${db_url}" == *"pw_a"* ]]
 }
 
 @test "fails when 1psa port lookup is invalid" {

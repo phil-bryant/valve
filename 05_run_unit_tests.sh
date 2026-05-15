@@ -30,6 +30,15 @@ if [ -z "$DB_PASSWORD" ]; then
   echo "Failed to resolve valve password from 1psa item: ${VALVE_PSA_ITEM}"
   exit 1
 fi
+DB_SCHEMA="$(read_1psa_secret "$VALVE_PSA_ITEM" "schema")"
+if [ -z "$DB_SCHEMA" ]; then
+  echo "Failed to resolve valve schema name from 1psa item: ${VALVE_PSA_ITEM}"
+  exit 1
+fi
+if [[ ! "${DB_SCHEMA}" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+  echo "Failed to resolve valve schema name from 1psa item: ${VALVE_PSA_ITEM}"
+  exit 1
+fi
 
 #R010: Refuse SQL unit tests when psql is unavailable.
 if ! command -v psql >/dev/null; then
@@ -52,7 +61,7 @@ fi
 #R015: Resolve SQL test file path from script directory.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SQL_TEST_FILE="${SCRIPT_DIR}/storage/sql/unit/ingest_schema_pgtap.sql"
-PSQL_COMMON_ARGS=(-w -P pager=off -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1)
+PSQL_COMMON_ARGS=(-w -P pager=off -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -v "VALVE_SCHEMA=${DB_SCHEMA}")
 
 #R020: Fail clearly when SQL unit-test file is missing.
 if [ ! -f "$SQL_TEST_FILE" ]; then

@@ -65,7 +65,17 @@ fi
 if [ "${1:-}" = "-f" ]; then
   case "${2:-}" in
     localhost_postgres_valve)
-      printf '%s\n' "${VALVE_PASSWORD-valve-password}"
+      case "${3:-}" in
+        password)
+          printf '%s\n' "${VALVE_PASSWORD-valve-password}"
+          ;;
+        schema)
+          printf '%s\n' "${VALVE_SCHEMA-valve}"
+          ;;
+        *)
+          exit 1
+          ;;
+      esac
       ;;
     *)
       exit 1
@@ -122,6 +132,20 @@ setup() {
   run env VALVE_PASSWORD= bash "${FIXTURE_ROOT}/05_run_unit_tests.sh"
   [ "$status" -ne 0 ]
   [[ "$output" == *"Failed to resolve valve password from 1psa item"* ]]
+}
+
+@test "fails when valve schema 1psa lookup is empty" {
+  #R005
+  run env VALVE_SCHEMA= bash "${FIXTURE_ROOT}/05_run_unit_tests.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Failed to resolve valve schema name from 1psa item"* ]]
+}
+
+@test "fails when valve schema 1psa lookup is invalid" {
+  #R005
+  run env VALVE_SCHEMA="valve-schema" bash "${FIXTURE_ROOT}/05_run_unit_tests.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Failed to resolve valve schema name from 1psa item"* ]]
 }
 
 @test "fails when psql is unavailable" {
@@ -196,6 +220,7 @@ setup() {
   grep -F -- "-U valve" "${CALLS_LOG}"
   grep -F -- "-d valve" "${CALLS_LOG}"
   grep -F "ON_ERROR_STOP=1" "${CALLS_LOG}"
+  grep -F "VALVE_SCHEMA=valve" "${CALLS_LOG}"
   grep -F "ingest_schema_pgtap.sql" "${CALLS_LOG}"
 }
 

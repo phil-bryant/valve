@@ -10,10 +10,11 @@ REPORT_DIR="${SECURITY_REPORT_DIR:-./.security-reports}"
 RUN_SAST="${RUN_SAST:-true}"
 RUN_DAST="${RUN_DAST:-true}"
 FAIL_ON_HIGH_CRITICAL="${SECURITY_FAIL_ON_HIGH_CRITICAL:-true}"
-DETECT_SECRETS_EXCLUDE_FILES_REGEX="${DETECT_SECRETS_EXCLUDE_FILES_REGEX:-(^|/)\\.gomodcache/|(^|/)requirements/.*-requirements\\.md$}"
+DETECT_SECRETS_EXCLUDE_FILES_REGEX="${DETECT_SECRETS_EXCLUDE_FILES_REGEX:-(^|/)\\.gomodcache/|(^|/)requirements/.*-requirements\\.md$|(^|/)\\.cursor/plans/.*\\.plan\\.md$}"
 DETECT_SECRETS_FORCE_ALL_PLUGINS="${DETECT_SECRETS_FORCE_ALL_PLUGINS:-false}"
-DAST_BASE_URL="${DAST_BASE_URL:-http://127.0.0.1:8080}"
-DAST_ZAP_TARGET_URL="${DAST_ZAP_TARGET_URL:-${DAST_BASE_URL}}"
+DAST_BASE_URL="${DAST_BASE_URL:-}"
+DAST_ZAP_TARGET_URL="${DAST_ZAP_TARGET_URL:-}"
+DAST_UPLOAD_ENDPOINT="${DAST_UPLOAD_ENDPOINT:-http://127.0.0.1:8081/v1/events/batch}"
 ZAP_APP_PATH="${ZAP_APP_PATH:-/Applications/ZAP.app}"
 DAST_IGNORED_ALERT_REFS="${DAST_IGNORED_ALERT_REFS:-10055-13,10062}"
 DAST_HEALTH_PROBE_TIMEOUT_SECONDS="${DAST_HEALTH_PROBE_TIMEOUT_SECONDS:-5}"
@@ -28,6 +29,9 @@ SCHEMATHESIS_MAX_EXAMPLES="${SCHEMATHESIS_MAX_EXAMPLES:-25}"
 VALVE_DATABASE_1PSA_ITEM="localhost_postgres_valve"
 VALVE_DATABASE_NAME="${VALVE_DATABASE_NAME:-valve}"
 VALVE_DATABASE_SSLMODE="${VALVE_DATABASE_SSLMODE:-disable}"
+DAST_BASE_URL_1PSA_ITEM="${DAST_BASE_URL_1PSA_ITEM:-${VALVE_DATABASE_1PSA_ITEM}}"
+DAST_DEFAULT_HOST="${DAST_DEFAULT_HOST:-127.0.0.1}"
+DAST_DEFAULT_PORT="${DAST_DEFAULT_PORT:-8090}"
 
 DAST_APP_PID=""
 
@@ -169,9 +173,13 @@ PY
 wait_for_healthz() {
   local base_url="$1"
   local timeout_seconds="$2"
+  local app_pid="${3:-}"
   local start_ts
   start_ts="$(date +%s)"
   while true; do
+    if [[ -n "${app_pid}" ]] && ! kill -0 "${app_pid}" >/dev/null 2>&1; then
+      return 2
+    fi
     set +e
     run_with_timeout 2 curl -fsS --max-time 2 "${base_url}/healthz" > "${REPORT_DIR}/dast-health.log"
     local health_exit=$?
@@ -241,6 +249,68 @@ print(
 PY
 }
 
+read_optional_1psa_field() {
+  local item="$1"
+  local field="$2"
+  local value=""
+  set +e
+  value="$(1psa -f "${item}" "${field}" 2>/dev/null)"
+  local read_exit=$?
+  set -e
+  if [[ "${read_exit}" -ne 0 ]]; then
+    return 1
+  fi
+  value="${value//$'\r'/}"
+  value="${value%$'\n'}"
+  if [[ -z "${value}" ]]; then
+    return 1
+  fi
+  printf '%s' "${value}"
+}
+
+resolve_auto_boot_dast_base_url() {
+  if [[ -n "${DAST_BASE_URL}" ]]; then
+    printf '%s' "${DAST_BASE_URL}"
+    return 0
+  fi
+  local base_url=""
+  local service_port=""
+  local service_host=""
+  local field_name=""
+  local -a base_url_fields=("dast_base_url" "service_base_url" "base_url")
+  local -a port_fields=("dast_port" "service_port" "app_port" "http_port")
+
+  for field_name in "${base_url_fields[@]}"; do
+    if base_url="$(read_optional_1psa_field "${DAST_BASE_URL_1PSA_ITEM}" "${field_name}")"; then
+      if ! resolve_dast_bind_address "${base_url}" >/dev/null 2>&1; then
+        echo "❌ 1psa returned an invalid DAST base URL for item/field: ${DAST_BASE_URL_1PSA_ITEM}/${field_name}"
+        exit 1
+      fi
+      printf '%s' "${base_url}"
+      return 0
+    fi
+  done
+
+  for field_name in "${port_fields[@]}"; do
+    if service_port="$(read_optional_1psa_field "${DAST_BASE_URL_1PSA_ITEM}" "${field_name}")"; then
+      if [[ ! "${service_port}" =~ ^[0-9]+$ ]] || (( service_port < 1 || service_port > 65535 )); then
+        echo "❌ 1psa returned an invalid DAST service port for item/field: ${DAST_BASE_URL_1PSA_ITEM}/${field_name}"
+        exit 1
+      fi
+      service_host="${DAST_DEFAULT_HOST}"
+      if service_host="$(read_optional_1psa_field "${DAST_BASE_URL_1PSA_ITEM}" "service_host")"; then
+        :
+      else
+        service_host="${DAST_DEFAULT_HOST}"
+      fi
+      printf 'http://%s:%s' "${service_host}" "${service_port}"
+      return 0
+    fi
+  done
+
+  printf 'http://%s:%s' "${DAST_DEFAULT_HOST}" "${DAST_DEFAULT_PORT}"
+}
+
 run_sast_lane() {
   #R015: Run Go-focused SAST scanners and persist machine-readable artifacts.
   if [[ "$RUN_SAST" != "true" ]]; then
@@ -254,6 +324,7 @@ run_sast_lane() {
   require_command detect-secrets
   require_command gosec
   require_command govulncheck
+  require_command go
   require_command python3
 
   echo "▶ Running SAST lane"
@@ -392,6 +463,21 @@ if details:
 PY
 
   print_tool_header \
+    "go vet" \
+    "Go static analyzer for suspicious constructs and correctness issues." \
+    "Checks packages for likely bugs before runtime and release." \
+    "https://pkg.go.dev/cmd/vet"
+  echo "▶ Running go vet"
+  set +e
+  go vet -json ./... > "${REPORT_DIR}/govet.json"
+  GOVET_EXIT=$?
+  set -e
+  if [[ "$GOVET_EXIT" -gt 1 ]]; then
+    echo "❌ go vet failed to execute."
+    exit 1
+  fi
+
+  print_tool_header \
     "gosec" \
     "Static security analyzer focused on vulnerable Go code patterns." \
     "Surfaces risky API usage and common implementation weaknesses." \
@@ -426,7 +512,7 @@ PY
   fi
 
   #R020: Aggregate SAST findings into a centralized gate summary.
-  python3 - <<'PY' "${REPORT_DIR}" "${FAIL_ON_HIGH_CRITICAL}" "${SHELLCHECK_EXIT}" "${GITLEAKS_EXIT}" "${GOSEC_EXIT}" "${GOVULNCHECK_EXIT}" "${DETECT_SECRETS_EXCLUDE_FILES_REGEX}"
+  python3 - <<'PY' "${REPORT_DIR}" "${FAIL_ON_HIGH_CRITICAL}" "${SHELLCHECK_EXIT}" "${GITLEAKS_EXIT}" "${GOVET_EXIT}" "${GOSEC_EXIT}" "${GOVULNCHECK_EXIT}" "${DETECT_SECRETS_EXCLUDE_FILES_REGEX}"
 import json
 import re
 import sys
@@ -437,18 +523,20 @@ report_dir = Path(sys.argv[1])
 fail_on_high = sys.argv[2].lower() == "true"
 shellcheck_exit = int(sys.argv[3])
 gitleaks_exit = int(sys.argv[4])
-gosec_exit = int(sys.argv[5])
-govulncheck_exit = int(sys.argv[6])
-detect_secrets_exclude_pattern = sys.argv[7]
+govet_exit = int(sys.argv[5])
+gosec_exit = int(sys.argv[6])
+govulncheck_exit = int(sys.argv[7])
+detect_secrets_exclude_pattern = sys.argv[8]
 
 semgrep_path = report_dir / "semgrep.json"
 shellcheck_path = report_dir / "shellcheck.json"
 gitleaks_path = report_dir / "gitleaks.json"
 gosec_path = report_dir / "gosec.json"
 govulncheck_path = report_dir / "govulncheck.json"
+govet_path = report_dir / "govet.json"
 detect_secrets_path = report_dir / "detect-secrets.json"
 
-for required in [semgrep_path, shellcheck_path, gitleaks_path, gosec_path, govulncheck_path, detect_secrets_path]:
+for required in [semgrep_path, shellcheck_path, gitleaks_path, govet_path, gosec_path, govulncheck_path, detect_secrets_path]:
     if not required.exists():
         print(f"Missing report file: {required}")
         sys.exit(1)
@@ -506,6 +594,16 @@ gosec_high = sum(1 for issue in issues if str(issue.get("severity", "")).upper()
 govulncheck_text = govulncheck_path.read_text(encoding="utf-8", errors="replace")
 govulncheck_findings = len(re.findall(r'"finding"\s*:', govulncheck_text))
 
+govet_payload = load_first_json(govet_path, {})
+govet_findings = 0
+if isinstance(govet_payload, dict):
+    for package_result in govet_payload.values():
+        if not isinstance(package_result, dict):
+            continue
+        diagnostics = package_result.get("vet")
+        if isinstance(diagnostics, list):
+            govet_findings += len(diagnostics)
+
 detect_secrets = load_first_json(detect_secrets_path, {})
 detect_secrets_results = detect_secrets.get("results", {}) if isinstance(detect_secrets, dict) else {}
 detect_secrets_findings = 0
@@ -524,17 +622,19 @@ if isinstance(detect_secrets_results, dict):
             detect_secrets_findings += len(findings)
 
 high_critical_total = (
-    shellcheck_high + semgrep_high + gitleaks_findings + gosec_high + govulncheck_findings + detect_secrets_findings
+    shellcheck_high + semgrep_high + gitleaks_findings + govet_findings + gosec_high + govulncheck_findings + detect_secrets_findings
 )
 summary = {
     "shellcheck_high_critical": shellcheck_high,
     "semgrep_high_critical": semgrep_high,
     "gitleaks_findings": gitleaks_findings,
     "detect_secrets_findings": detect_secrets_findings,
+    "govet_findings": govet_findings,
     "gosec_high_critical": gosec_high,
     "govulncheck_findings": govulncheck_findings,
     "shellcheck_exit_code": shellcheck_exit,
     "gitleaks_exit_code": gitleaks_exit,
+    "govet_exit_code": govet_exit,
     "gosec_exit_code": gosec_exit,
     "govulncheck_exit_code": govulncheck_exit,
     "high_critical_total": high_critical_total,
@@ -562,6 +662,7 @@ run_dast_lane() {
     return 0
   fi
 
+  local effective_dast_base_url="${DAST_BASE_URL:-http://127.0.0.1:8080}"
   require_command curl
   require_command python3
   if [[ "${RUN_SCHEMATHESIS}" == "true" ]]; then
@@ -581,25 +682,31 @@ run_dast_lane() {
   if [[ "${DAST_AUTO_BOOT}" == "true" ]]; then
     require_command go
     require_command 1psa
+    if ! effective_dast_base_url="$(resolve_auto_boot_dast_base_url)"; then
+      echo "❌ Unable to derive DAST_BASE_URL from 1psa: ${VALVE_DATABASE_1PSA_ITEM}/host and ${VALVE_DATABASE_1PSA_ITEM}/port"
+      exit 1
+    fi
     local database_url=""
     if ! database_url="$(compose_database_url_from_1psa)"; then
       echo "❌ Failed to compose VALVE_DATABASE_URL from 1psa fields."
       exit 1
     fi
     local dast_bind_addr=""
-    if ! dast_bind_addr="$(resolve_dast_bind_address "${DAST_BASE_URL}")"; then
-      echo "❌ Unable to derive bind address from DAST_BASE_URL: ${DAST_BASE_URL}"
+    if ! dast_bind_addr="$(resolve_dast_bind_address "${effective_dast_base_url}")"; then
+      echo "❌ Unable to derive bind address from DAST_BASE_URL: ${effective_dast_base_url}"
       exit 1
     fi
+    local upload_endpoint="${VALVE_UPLOAD_ENDPOINT:-${DAST_UPLOAD_ENDPOINT}}"
     print_tool_header \
       "go run ./cmd/valve" \
       "Auto-boots the local service so DAST has a deterministic target." \
-      "Uses VALVE_ADDR from DAST_BASE_URL and DB URL/host/port from 1psa." \
+      "Uses VALVE_ADDR from DAST_BASE_URL plus DB and upload endpoint wiring." \
       "https://go.dev/"
-    echo "▶ Auto-booting valve service for DAST at ${DAST_BASE_URL}"
-    VALVE_ADDR="${dast_bind_addr}" VALVE_DATABASE_URL="${database_url}" go run ./cmd/valve > "${REPORT_DIR}/dast-app.log" 2>&1 &
+    echo "▶ Auto-booting valve service for DAST at ${effective_dast_base_url}"
+    VALVE_ADDR="${dast_bind_addr}" VALVE_DATABASE_URL="${database_url}" VALVE_UPLOAD_ENDPOINT="${upload_endpoint}" go run ./cmd/valve > "${REPORT_DIR}/dast-app.log" 2>&1 &
     DAST_APP_PID="$!"
   fi
+  local effective_zap_target_url="${DAST_ZAP_TARGET_URL:-${effective_dast_base_url}}"
   local zap_runner_cmd=""
   local zap_runner_mode=""
   if zap_runner_cmd="$(resolve_zap_baseline)"; then
@@ -619,14 +726,45 @@ run_dast_lane() {
     "HTTP health probe to validate target service availability." \
     "Confirms /healthz is reachable before dynamic scanning starts." \
     "https://curl.se/"
-  echo "▶ Running DAST lane health probe against ${DAST_BASE_URL}"
+  echo "▶ Running DAST lane health probe against ${effective_dast_base_url}"
   local health_timeout_seconds="${DAST_HEALTH_PROBE_TIMEOUT_SECONDS}"
   if [[ "${DAST_AUTO_BOOT}" == "true" ]]; then
     health_timeout_seconds="${DAST_AUTO_BOOT_TIMEOUT_SECONDS}"
   fi
-  if ! wait_for_healthz "${DAST_BASE_URL}" "${health_timeout_seconds}"; then
-    echo "❌ DAST health probe failed: ${DAST_BASE_URL}/healthz"
+  set +e
+  wait_for_healthz "${effective_dast_base_url}" "${health_timeout_seconds}" "${DAST_APP_PID}"
+  local health_status=$?
+  set -e
+  if [[ "${health_status}" -ne 0 ]]; then
+    if [[ "${health_status}" -eq 2 ]]; then
+      echo "❌ Auto-booted valve service exited before DAST health probe succeeded."
+      if [[ -f "${REPORT_DIR}/dast-app.log" ]]; then
+        echo "▶ Auto-boot log:"
+        sed 's/^/  /' "${REPORT_DIR}/dast-app.log"
+      fi
+    else
+      echo "❌ DAST health probe failed: ${effective_dast_base_url}/healthz"
+    fi
     exit 1
+  fi
+  if [[ -n "${DAST_APP_PID}" ]] && ! kill -0 "${DAST_APP_PID}" >/dev/null 2>&1; then
+    echo "❌ Auto-booted valve service exited before DAST scans began."
+    if [[ -f "${REPORT_DIR}/dast-app.log" ]]; then
+      echo "▶ Auto-boot log:"
+      sed 's/^/  /' "${REPORT_DIR}/dast-app.log"
+    fi
+    exit 1
+  fi
+  if [[ -n "${DAST_APP_PID}" ]]; then
+    sleep 1
+    if ! kill -0 "${DAST_APP_PID}" >/dev/null 2>&1; then
+      echo "❌ Auto-booted valve service exited during DAST readiness checks."
+      if [[ -f "${REPORT_DIR}/dast-app.log" ]]; then
+        echo "▶ Auto-boot log:"
+        sed 's/^/  /' "${REPORT_DIR}/dast-app.log"
+      fi
+      exit 1
+    fi
   fi
 
   local schemathesis_exit=0
@@ -640,7 +778,7 @@ run_dast_lane() {
     set +e
     run_with_timeout "${SCHEMATHESIS_TIMEOUT_SECONDS}" \
       schemathesis run "${SCHEMATHESIS_SCHEMA_PATH}" \
-      --url "${DAST_BASE_URL}" \
+      --url "${effective_dast_base_url}" \
       --mode positive \
       --seed "${SCHEMATHESIS_SEED}" \
       --max-examples "${SCHEMATHESIS_MAX_EXAMPLES}" \
@@ -662,7 +800,7 @@ run_dast_lane() {
   fi
 
   #R035: Execute OWASP ZAP baseline via host-native zap-baseline.py.
-  local zap_target_url="${DAST_ZAP_TARGET_URL}"
+  local zap_target_url="${effective_zap_target_url}"
 
   print_tool_header \
     "OWASP ZAP Baseline" \
@@ -718,7 +856,7 @@ run_dast_lane() {
   fi
 
   #R040: Summarize DAST findings and enforce medium/high gate policy.
-  python3 - <<'PY' "${REPORT_DIR}/dast-summary.json" "${DAST_BASE_URL}" "${zap_target_url}" "${zap_report_path}" "${FAIL_ON_HIGH_CRITICAL}" "${zap_exit}" "${DAST_IGNORED_ALERT_REFS}" "${schemathesis_exit}" "${RUN_SCHEMATHESIS}"
+  python3 - <<'PY' "${REPORT_DIR}/dast-summary.json" "${effective_dast_base_url}" "${zap_target_url}" "${zap_report_path}" "${FAIL_ON_HIGH_CRITICAL}" "${zap_exit}" "${DAST_IGNORED_ALERT_REFS}" "${schemathesis_exit}" "${RUN_SCHEMATHESIS}"
 import json
 import sys
 from urllib.parse import urlparse

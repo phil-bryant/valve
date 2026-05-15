@@ -9,11 +9,13 @@ Design: Use `bash` strict mode (`set -euo pipefail`) and abort on first command 
 Tests:
 - Force `psql` to fail and verify script exits non-zero.
 
-R005  Statement: Resolve SQL unit-test credentials exclusively from `1psa`.
-Design: Read valve password from `1psa` item `localhost_postgres_valve` (default field `password`) and connect only to local `localhost:5432/valve` as user `valve`.
+R005  Statement: Resolve SQL unit-test credentials and schema exclusively from `1psa`.
+Design: Read valve password from `1psa` item `localhost_postgres_valve` (default field `password`), read schema name from the same item `schema` field, validate schema identifier safety, and connect only to local `localhost:5432/valve` as user `valve`.
 Tests:
 - Run with `1psa` unavailable and verify explicit non-zero failure output.
 - Return empty valve credential from `1psa` and verify explicit non-zero failure output.
+- Return empty valve schema from `1psa` and verify explicit non-zero failure output.
+- Return invalid valve schema from `1psa` and verify explicit non-zero failure output.
 
 R010  Statement: Refuse unit-test execution when required CLIs are unavailable.
 Design: Verify `psql`, `go`, and `bats` exist on PATH before any SQL, Go, or shell unit-test invocation.
@@ -38,9 +40,9 @@ Tests:
 - Verify script invokes extension-create SQL before test-file execution.
 
 R030  Statement: Execute SQL unit tests before Go and Bats unit tests using non-interactive fail-fast commands.
-Design: Run SQL test file with `-w -P pager=off -h localhost -p 5432 -d valve -v ON_ERROR_STOP=1 -f <sql-test-file>` using credentials from `R005`, then run `go test ./...` and `bats tests/sh` only after SQL tests succeed.
+Design: Run SQL test file with `-w -P pager=off -h localhost -p 5432 -d valve -v ON_ERROR_STOP=1 -v VALVE_SCHEMA=<1psa schema> -f <sql-test-file>` using credentials and schema from `R005`, then run `go test ./...` and `bats tests/sh` only after SQL tests succeed.
 Tests:
-- Verify test invocation includes `ON_ERROR_STOP=1`, `-P pager=off`, configured database URL, and SQL test file path.
+- Verify test invocation includes `ON_ERROR_STOP=1`, `-P pager=off`, configured database URL, `VALVE_SCHEMA=<schema>`, and SQL test file path.
 - Force SQL stage failure and verify `go test` is not attempted.
 - Force `go test` failure and verify script exits non-zero.
 - Verify `bats tests/sh` runs only after `go test ./...` succeeds.

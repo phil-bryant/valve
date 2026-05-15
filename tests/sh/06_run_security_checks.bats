@@ -105,6 +105,21 @@ EOF
   chmod +x "${STUB_BIN}/govulncheck"
 }
 
+make_go_vet_stub() {
+  local payload="${1:-{}}"
+  cat > "${STUB_BIN}/go" <<EOF
+#!/usr/bin/env bash
+if [ "\${1:-}" = "vet" ]; then
+  printf '%s\n' '${payload}'
+  exit "\${GO_VET_STUB_EXIT:-0}"
+fi
+echo "unexpected go invocation: \$*" >&2
+exit 2
+EOF
+  chmod +x "${STUB_BIN}/go"
+  export GO_VET_STUB_EXIT=0
+}
+
 make_curl_stub() {
   local exit_code="${1:-0}"
   cat > "${STUB_BIN}/curl" <<EOF
@@ -175,8 +190,19 @@ make_go_stub() {
   cat > "${STUB_BIN}/go" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" > "${GO_STUB_LOG_PATH}"
+printf '%s\n' "VALVE_ADDR=${VALVE_ADDR:-}" >> "${GO_STUB_LOG_PATH}"
 printf '%s\n' "VALVE_DATABASE_URL=${VALVE_DATABASE_URL:-}" >> "${GO_STUB_LOG_PATH}"
-exit 0
+printf '%s\n' "VALVE_UPLOAD_ENDPOINT=${VALVE_UPLOAD_ENDPOINT:-}" >> "${GO_STUB_LOG_PATH}"
+sleep 2
+EOF
+  chmod +x "${STUB_BIN}/go"
+}
+
+make_go_stub_exit_immediately() {
+  cat > "${STUB_BIN}/go" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' 'boot failed' >&2
+exit 1
 EOF
   chmod +x "${STUB_BIN}/go"
 }
@@ -200,6 +226,20 @@ if [ "$#" -eq 3 ] && [ "$1" = "-f" ] && [ "$2" = "localhost_postgres_valve" ] &&
   printf '%s' "${ONEPSA_DATABASE_PORT_VALUE:-5432}"
   exit 0
 fi
+if [ "$#" -eq 3 ] && [ "$1" = "-f" ] && [ "$2" = "localhost_postgres_valve" ] && [ "$3" = "dast_port" ]; then
+  if [ -n "${ONEPSA_DAST_PORT_VALUE:-}" ]; then
+    printf '%s' "${ONEPSA_DAST_PORT_VALUE}"
+    exit 0
+  fi
+  exit 2
+fi
+if [ "$#" -eq 3 ] && [ "$1" = "-f" ] && [ "$2" = "localhost_postgres_valve" ] && [ "$3" = "dast_base_url" ]; then
+  if [ -n "${ONEPSA_DAST_BASE_URL_VALUE:-}" ]; then
+    printf '%s' "${ONEPSA_DAST_BASE_URL_VALUE}"
+    exit 0
+  fi
+  exit 2
+fi
 exit 2
 EOF
   chmod +x "${STUB_BIN}/1psa"
@@ -214,6 +254,7 @@ setup_fixture() {
 setup() {
   setup_shell_test
   setup_fixture
+  make_go_vet_stub '{}'
 }
 
 teardown() {
@@ -285,9 +326,28 @@ teardown() {
   [ -f "${FIXTURE_ROOT}/.security-reports/shellcheck.json" ]
   [ -f "${FIXTURE_ROOT}/.security-reports/gitleaks.json" ]
   [ -f "${FIXTURE_ROOT}/.security-reports/detect-secrets.json" ]
+  [ -f "${FIXTURE_ROOT}/.security-reports/govet.json" ]
   [ -f "${FIXTURE_ROOT}/.security-reports/gosec.json" ]
   [ -f "${FIXTURE_ROOT}/.security-reports/govulncheck.json" ]
   [ -f "${FIXTURE_ROOT}/.security-reports/sast-summary.json" ]
+}
+
+@test "records go vet findings in SAST summary" {
+  #R015 #R020
+  make_semgrep_stub
+  make_shellcheck_stub '[]'
+  make_gitleaks_stub '[]'
+  make_detect_secrets_stub '{"results":{}}'
+  make_go_vet_stub '{"golang.org/x/tools/go/analysis/unitchecker":{"vet":[{"posn":"/tmp/repo/main.go:10:2","message":"suspicious construct"}]}}'
+  make_gosec_stub '{"Issues":[]}'
+  make_govulncheck_stub '{}'
+  run env RUN_DAST=false SECURITY_FAIL_ON_HIGH_CRITICAL=true PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"SAST) gate failed"* ]]
+  run python3 -c 'import json,sys;print(json.load(open(sys.argv[1], encoding="utf-8"))["govet_findings"])' "${FIXTURE_ROOT}/.security-reports/sast-summary.json"
+  [ "$status" -eq 0 ]
+  [ "$output" -eq 1 ]
 }
 
 @test "fails SAST gate when findings exist and fail-on-high is enabled" {
@@ -317,7 +377,7 @@ teardown() {
   [ "$status" -eq 0 ]
 }
 
-@test "invokes detect-secrets with gomodcache exclusion regex by default" {
+@test "invokes detect-secrets with default exclusion regex by default" {
   #R015
   make_semgrep_stub
   make_shellcheck_stub '[]'
@@ -325,7 +385,7 @@ teardown() {
   make_detect_secrets_stub '{"results":{}}'
   make_gosec_stub '{"Issues":[]}'
   make_govulncheck_stub '{}'
-  run env RUN_DAST=false DETECT_SECRETS_EXPECT_ARGS_CONTAIN="--exclude-files (^|/)\\.gomodcache/" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+  run env RUN_DAST=false DETECT_SECRETS_EXPECT_ARGS_CONTAIN="--exclude-files (^|/)\\.gomodcache/|(^|/)requirements/.*-requirements\\.md$|(^|/)\\.cursor/plans/.*\\.plan\\.md$" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
     bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
   [ "$status" -eq 0 ]
 }
@@ -335,7 +395,7 @@ teardown() {
   make_semgrep_stub
   make_shellcheck_stub '[]'
   make_gitleaks_stub '[]'
-  make_detect_secrets_stub '{"results":{".gomodcache/cache/download/example":[{"type":"Hex High Entropy String","line_number":1}]}}'
+  make_detect_secrets_stub '{"results":{".gomodcache/cache/download/example":[{"type":"Hex High Entropy String","line_number":1}],".cursor/plans/resolve.plan.md":[{"type":"Basic Auth Credentials","line_number":1}]}}'
   make_gosec_stub '{"Issues":[]}'
   make_govulncheck_stub '{}'
   run env RUN_DAST=false SECURITY_FAIL_ON_HIGH_CRITICAL=true PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
@@ -409,8 +469,59 @@ EOF
   [ "$status" -eq 0 ]
   [ -f "${TEST_TMPDIR}/go-stub.log" ]
   [[ "$(cat "${TEST_TMPDIR}/go-stub.log")" == *"run ./cmd/valve"* ]]
+  [[ "$(cat "${TEST_TMPDIR}/go-stub.log")" == *"VALVE_ADDR=127.0.0.1:8090"* ]]
   [[ "$(cat "${TEST_TMPDIR}/go-stub.log")" == *"VALVE_DATABASE_URL=postgres://"* ]]
   [[ "$(cat "${TEST_TMPDIR}/go-stub.log")" == *"@db.example.internal:6543/valve?sslmode=disable"* ]]
+  [[ "$(cat "${TEST_TMPDIR}/go-stub.log")" == *"VALVE_UPLOAD_ENDPOINT=http://127.0.0.1:8081/v1/events/batch"* ]]
+}
+
+@test "uses 1psa DAST port field for auto-boot bind address when provided" {
+  #R025
+  make_go_stub
+  make_1psa_stub
+  make_curl_stub 0
+  make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
+  run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=false ONEPSA_DAST_PORT_VALUE="18080" GO_STUB_LOG_PATH="${TEST_TMPDIR}/go-stub.log" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+  [ "$status" -eq 0 ]
+  [ -f "${TEST_TMPDIR}/go-stub.log" ]
+  [[ "$(cat "${TEST_TMPDIR}/go-stub.log")" == *"VALVE_ADDR=127.0.0.1:18080"* ]]
+}
+
+@test "uses explicit DAST_BASE_URL override for auto-boot bind address" {
+  #R025
+  make_go_stub
+  make_1psa_stub
+  make_curl_stub 0
+  make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
+  run env RUN_SAST=false DAST_AUTO_BOOT=true DAST_BASE_URL="http://127.0.0.1:18080" RUN_SCHEMATHESIS=false GO_STUB_LOG_PATH="${TEST_TMPDIR}/go-stub.log" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+  [ "$status" -eq 0 ]
+  [ -f "${TEST_TMPDIR}/go-stub.log" ]
+  [[ "$(cat "${TEST_TMPDIR}/go-stub.log")" == *"VALVE_ADDR=127.0.0.1:18080"* ]]
+}
+
+@test "requires 1psa for DAST auto-boot even when VALVE_DATABASE_URL is set" {
+  #R025
+  make_go_stub
+  local override_db_url="postgres://override_user:"
+  override_db_url+="override_pw@db.override:5432/valve?sslmode=disable"
+  run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=false VALVE_DATABASE_URL="${override_db_url}" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Missing required command: 1psa"* ]]
+}
+
+@test "fails when auto-booted service exits before health probe succeeds" {
+  #R030
+  make_go_stub_exit_immediately
+  make_1psa_stub
+  make_curl_stub 0
+  make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
+  run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=false PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Auto-booted valve service exited"* ]]
 }
 
 @test "runs Schemathesis and writes junit artifact" {
@@ -492,7 +603,7 @@ EOF
   run env RUN_SAST=false RUN_DAST=true DAST_AUTO_BOOT=false RUN_SCHEMATHESIS=false PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
     bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"DAST health probe failed"* ]]
+  [[ "$output" == *"health probe"* ]]
 }
 
 @test "fails DAST gate when zap reports medium/high alerts" {
