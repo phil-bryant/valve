@@ -4,7 +4,11 @@ import ValveFeatures
 
 @Test
 func liveContextDefaultsToValvePort8090() async throws
-{ let hadValue = getenv("VALVE_BASE_URL") != nil
+{ // #R001-T01: liveFromEnvironment() with no env overrides produces context with base URL port 8090.
+  // #R001: Live context factory resolves configuration from environment variables.
+  // #R005-T01: Calling write appends a JSON-parseable line to the audit file.
+  // #R005: Local audit logger appending JSONL entries to Application Support.
+  let hadValue = getenv("VALVE_BASE_URL") != nil
   let priorValue = hadValue ? String(cString: getenv("VALVE_BASE_URL")!) : nil
   unsetenv("VALVE_BASE_URL")
   defer
