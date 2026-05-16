@@ -17,6 +17,28 @@ if [ "\${1:-}" = "test" ]; then
   fi
   exit ${exit_code}
 fi
+if [ "\${1:-}" = "build" ]; then
+  exit 0
+fi
+exit 0
+EOF
+  chmod +x "${STUB_BIN}/go"
+}
+
+# Stub where preflight `go test ./...` passes but the R012 warm-up
+# `go build ./...` fails. Used to verify the warm-up gate.
+make_go_stub_warmup_build_fails() {
+  cat > "${STUB_BIN}/go" <<EOF
+#!/usr/bin/env bash
+echo "go \$*" >> "${CALLS_LOG}"
+if [ "\${1:-}" = "build" ]; then
+  echo "build error: simulated warm-up failure" >&2
+  exit 1
+fi
+if [ "\${1:-}" = "test" ]; then
+  echo "ok      valve/internal/credentials  0.005s"
+  exit 0
+fi
 exit 0
 EOF
   chmod +x "${STUB_BIN}/go"
@@ -285,6 +307,32 @@ EOF
   ! grep -F "gremlins" "${CALLS_LOG}"
 }
 
+@test "warms Go build cache between preflight and gremlins" {
+  #R012-T01: Verify `go build ./...` is invoked between preflight and gremlins.
+  #R012
+  run bash "${FIXTURE_ROOT}/06_run_mutation_tests.sh"
+  [ "$status" -eq 0 ]
+  grep -F "go build ./..." "${CALLS_LOG}"
+}
+
+@test "warms Go test compile cache between preflight and gremlins" {
+  #R012-T02: Verify `go test -count=1 -run '^$' ./...` is invoked between preflight and gremlins.
+  #R012
+  run bash "${FIXTURE_ROOT}/06_run_mutation_tests.sh"
+  [ "$status" -eq 0 ]
+  grep -F -- "go test -count=1 -run ^$ ./..." "${CALLS_LOG}"
+}
+
+@test "fails warm-up and does not invoke gremlins when go build fails" {
+  #R012-T03: Force the warm-up `go build` to fail and verify the script exits non-zero with a warm-up-specific message and that gremlins is not invoked.
+  #R012
+  make_go_stub_warmup_build_fails
+  run bash "${FIXTURE_ROOT}/06_run_mutation_tests.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Cache warm-up failed"* ]]
+  ! grep -F "gremlins" "${CALLS_LOG}"
+}
+
 @test "invokes gremlins unleash from module root after preflight passes" {
   #R015-T01: Verify gremlins unleash is invoked from the module root (no ./... argument) after preflight passes.
   #R015
@@ -448,12 +496,12 @@ print("All required fields present")
   grep -E -- "--timeout-coefficient [0-9]+" "${CALLS_LOG}"
 }
 
-@test "default MUTATION_TIMEOUT_COEFFICIENT is 10" {
-  #R045-T02: Verify the default coefficient is 10 when MUTATION_TIMEOUT_COEFFICIENT is not set.
+@test "default MUTATION_TIMEOUT_COEFFICIENT is 20" {
+  #R045-T02: Verify the default coefficient is 20 when MUTATION_TIMEOUT_COEFFICIENT is not set.
   #R045
   run bash "${FIXTURE_ROOT}/06_run_mutation_tests.sh"
   [ "$status" -eq 0 ]
-  grep -F -- "--timeout-coefficient 10" "${CALLS_LOG}"
+  grep -F -- "--timeout-coefficient 20" "${CALLS_LOG}"
 }
 
 @test "respects custom MUTATION_TIMEOUT_COEFFICIENT" {
