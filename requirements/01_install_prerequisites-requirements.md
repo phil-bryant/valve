@@ -72,13 +72,16 @@ Tests:
 - R055-T03: Run installer with `zap-baseline.py` or `ZAP.sh` available and verify cask install is skipped.
 
 R060  Statement: Ensure mutation testing tooling is available for test quality gating.
-Design: Resolve `gremlins` from `PATH` or Go bin (`$GOBIN` / `$(go env GOPATH)/bin`); when missing, install via `go install github.com/go-gremlins/gremlins/cmd/gremlins@latest` and verify command resolution.
+Design: Resolve `gremlins` from `PATH` or Go bin (`$GOBIN` / `$(go env GOPATH)/bin`) using declaration-then-assignment command substitution (to preserve resolver status handling and satisfy ShellCheck SC2155); when missing, install via `go install github.com/go-gremlins/gremlins/cmd/gremlins@latest` and verify command resolution.
 Tests:
 - R060-T01: Run installer without `gremlins` and verify `go install` is attempted for gremlins.
 - R060-T02: Run with `gremlins` already available and verify no reinstall.
+- R060-T03: Run with `gremlins` unavailable on PATH but installable to Go bin and verify resolver fallback succeeds.
+- R060-T04: Run with empty `GOBIN` and preinstalled `gremlins` in `GOPATH/bin` and verify fallback resolution succeeds without reinstall.
 
 ## Changelog
 
+- 2026-05-16: Clarified R060 gremlins resolver style to require declaration-then-assignment (ShellCheck SC2155-safe) and added R060-T04 for preinstalled `GOPATH/bin` fallback.
 - 2026-05-16: Added R060 for mutation testing tooling (gremlins) prerequisite.
 - 2026-05-16: Numbered test bullets with R###-T## scheme.
 - 2026-05-10: Added explicit `1psa` prerequisite required for secure DB secret resolution in step-06 auto-boot.

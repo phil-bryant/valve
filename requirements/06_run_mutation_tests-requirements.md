@@ -10,16 +10,25 @@ Tests:
 - R001-T01: Run from a non-repo working directory and verify execution succeeds.
 
 R005  Statement: Fail fast when required commands are unavailable.
-Design: Verify `go` exists on PATH and resolve `gremlins` from PATH or Go bin (`$GOBIN` / `$(go env GOPATH)/bin`) before mutation testing begins. Emit installer guidance referencing `./01_install_prerequisites.sh` on failure.
+Design: Verify `go` exists on PATH and resolve `gremlins` from PATH or Go bin (`$GOBIN` / `$(go env GOPATH)/bin`) before mutation testing begins. Use declaration-then-assignment for command-substitution lookups so resolver exit codes are preserved explicitly. Emit installer guidance referencing `./01_install_prerequisites.sh` on failure.
 Tests:
 - R005-T01: Run with `gremlins` missing from PATH and verify explicit non-zero failure output with installer guidance.
 - R005-T02: Run with `go` missing from PATH and verify explicit non-zero failure output.
+- R005-T03: Run with `gremlins` absent from PATH but present in `GOBIN` and verify resolution succeeds.
+- R005-T04: Run with empty `GOBIN` and `gremlins` available in `GOPATH/bin` and verify fallback resolution succeeds.
 
 R010  Statement: Require unit tests to pass before mutation testing begins.
 Design: Run `go test ./...` as a preflight gate. If any test fails, abort with a clear message directing the operator to fix tests first via `./05_run_unit_tests.sh`.
 Tests:
 - R010-T01: Force `go test` failure and verify script exits non-zero with guidance to run step-05 first.
 - R010-T02: Verify `gremlins` is not invoked when preflight `go test` fails.
+
+R012  Statement: Warm Go build and test caches before invoking gremlins.
+Design: Between preflight and the gremlins invocation, run `go build ./...` followed by `go test -count=1 -run '^$' ./...` to populate `GOCACHE` with build artifacts and test binaries for every package. Mutation workers share that cache across their temp working directories, so per-mutation rebuilds become single-file recompiles rather than full cold compiles. If warm-up fails (e.g. a compile error), abort with a clear failure message; gremlins must not run.
+Tests:
+- R012-T01: Verify `go build ./...` is invoked between preflight and gremlins.
+- R012-T02: Verify `go test -count=1 -run '^$' ./...` is invoked between preflight and gremlins.
+- R012-T03: Force the warm-up `go build` to fail and verify the script exits non-zero with a warm-up-specific message and that gremlins is not invoked.
 
 R015  Statement: Run gremlins mutation testing across the Go module.
 Design: Invoke `gremlins unleash --tags ''` from the module root (no path argument; `./...` is Go-tool syntax that gremlins does not expand) and direct machine-readable results to `${REPORT_DIR}/gremlins.json` via `-o`. Capture stdout and stderr to a log for diagnostics. If gremlins writes no JSON (e.g. "No results to report.") or exits with a non-recoverable error, fail loudly with the captured output rather than reporting `0.0%`.
@@ -66,8 +75,18 @@ Tests:
 - R040-T01: Simulate gremlins exceeding timeout and verify explicit timeout failure message.
 - R040-T02: Verify default timeout is 600 seconds when not overridden.
 
+R045  Statement: Make gremlins' per-mutation `go test` budget configurable.
+Design: Accept `MUTATION_TIMEOUT_COEFFICIENT` (default `20`) and pass it as `--timeout-coefficient <int>` to `gremlins unleash`. Gremlins multiplies the coverage-gathering elapsed time by this coefficient to set each mutation's `go test` timeout. Gremlins' built-in default (`3`) is too aggressive even with R012 warm-up on this repo's heavier packages (e.g. `internal/credentials`), producing spurious `TIMED OUT` verdicts that gremlins excludes from `test_efficacy`, in turn yielding a misleadingly high score on a handful of fast mutations.
+Tests:
+- R045-T01: Verify `gremlins unleash` is invoked with `--timeout-coefficient <int>`.
+- R045-T02: Verify the default coefficient is `20` when `MUTATION_TIMEOUT_COEFFICIENT` is not set.
+- R045-T03: Verify a custom `MUTATION_TIMEOUT_COEFFICIENT` value is forwarded.
+
 ## Changelog
 
+- 2026-05-16: Clarified R005 command-resolution style to require declaration-then-assignment (ShellCheck SC2155-safe) and added R005-T04 for `GOPATH/bin` fallback.
 - 2026-05-16: Initial requirements for mutation testing gate (step-06).
 - 2026-05-16: Fix gremlins invocation (drop `./...`, invoke from module root). Switch to gremlins JSON via `-o` and gate on `test_efficacy`. Treat missing JSON as a hard failure instead of `0.0%`. Rename `MUTATION_EXCLUDE_PACKAGES` to `MUTATION_EXCLUDE_FILES` and map to `--exclude-files <regex>`. Expand the persisted summary fields (`lived`, `not_viable`, `mutator_coverage`, `excluded_files`).
 - 2026-05-16: Add R022 mutator-coverage gate (`MUTATOR_COVERAGE_THRESHOLD`, default `70`) so that low-signal runs (e.g. mostly `TIMED OUT` or `NOT COVERED`) cannot pass on the strength of a tiny number of fast verdicts. Summary now records `coverage_threshold`, `score_failed`, and `coverage_failed`.
+- 2026-05-16: Add R045 `MUTATION_TIMEOUT_COEFFICIENT` (default `20`) and forward it to gremlins as `--timeout-coefficient`. Replaces gremlins' built-in default of `3`, which on this repo gives ~7.5s per-mutation budgets and produces large `TIMED OUT` storms on cold Go build caches.
+- 2026-05-16: Add R012 cache warm-up step (`go build ./...` + `go test -count=1 -run '^$' ./...`) between preflight and gremlins so that per-mutation rebuilds become single-file recompiles. Bumped R045 default coefficient from `10` to `20` for slower packages like `internal/credentials`.

@@ -211,6 +211,61 @@ EOF
   grep -F "gremlins unleash" "${CALLS_LOG}"
 }
 
+@test "uses gremlins from go env GOPATH bin when GOBIN is empty" {
+  #R005-T04: Run with empty GOBIN and gremlins available in GOPATH/bin verifies fallback resolution succeeds.
+  #R005
+  rm -f "${STUB_BIN}/gremlins"
+  local go_path_dir="${TEST_TMPDIR}/go"
+  local go_path_bin="${go_path_dir}/bin"
+  mkdir -p "${go_path_bin}"
+  cat > "${go_path_bin}/gremlins" <<EOF
+#!/usr/bin/env bash
+echo "gremlins \$*" >> "${CALLS_LOG}"
+output_path=""
+prev=""
+for arg in "\$@"; do
+  if [ "\${prev}" = "-o" ] || [ "\${prev}" = "--output" ]; then
+    output_path="\${arg}"
+  fi
+  prev="\${arg}"
+done
+cat <<'GREMOUT'
+Killed: 42, Lived: 8, Not covered: 3
+Test efficacy: 84.00%
+Mutator coverage: 100.00%
+GREMOUT
+if [ -n "\${output_path}" ]; then
+  cat > "\${output_path}" <<'JSON'
+{"go_module":"valve","files":[],"test_efficacy":84.0,"mutations_coverage":100.0,"mutants_total":50,"mutants_killed":42,"mutants_lived":8,"mutants_not_viable":0,"mutants_not_covered":3,"elapsed_time":2.0}
+JSON
+fi
+exit 0
+EOF
+  chmod +x "${go_path_bin}/gremlins"
+  cat > "${STUB_BIN}/go" <<'EOF'
+#!/usr/bin/env bash
+echo "go $*" >> "${CALLS_LOG}"
+if [ "${1:-}" = "env" ] && [ "${2:-}" = "GOBIN" ]; then
+  echo ""
+  exit 0
+fi
+if [ "${1:-}" = "env" ] && [ "${2:-}" = "GOPATH" ]; then
+  echo "${GO_PATH_DIR}"
+  exit 0
+fi
+if [ "${1:-}" = "test" ]; then
+  echo "ok      valve/internal/credentials  0.005s"
+  exit 0
+fi
+exit 0
+EOF
+  chmod +x "${STUB_BIN}/go"
+  run env GO_PATH_DIR="${go_path_dir}" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+    bash "${FIXTURE_ROOT}/06_run_mutation_tests.sh"
+  [ "$status" -eq 0 ]
+  grep -F "gremlins unleash" "${CALLS_LOG}"
+}
+
 @test "fails when preflight go test fails" {
   #R010-T01: Force go test failure and verify script exits non-zero with guidance to run step-05 first.
   #R010
@@ -383,4 +438,28 @@ print("All required fields present")
   #R040
   run bash "${FIXTURE_ROOT}/06_run_mutation_tests.sh"
   [ "$status" -eq 0 ]
+}
+
+@test "passes --timeout-coefficient to gremlins" {
+  #R045-T01: Verify gremlins unleash is invoked with --timeout-coefficient <int>.
+  #R045
+  run bash "${FIXTURE_ROOT}/06_run_mutation_tests.sh"
+  [ "$status" -eq 0 ]
+  grep -E -- "--timeout-coefficient [0-9]+" "${CALLS_LOG}"
+}
+
+@test "default MUTATION_TIMEOUT_COEFFICIENT is 10" {
+  #R045-T02: Verify the default coefficient is 10 when MUTATION_TIMEOUT_COEFFICIENT is not set.
+  #R045
+  run bash "${FIXTURE_ROOT}/06_run_mutation_tests.sh"
+  [ "$status" -eq 0 ]
+  grep -F -- "--timeout-coefficient 10" "${CALLS_LOG}"
+}
+
+@test "respects custom MUTATION_TIMEOUT_COEFFICIENT" {
+  #R045-T03: Verify a custom MUTATION_TIMEOUT_COEFFICIENT value is forwarded.
+  #R045
+  run env MUTATION_TIMEOUT_COEFFICIENT=25 bash "${FIXTURE_ROOT}/06_run_mutation_tests.sh"
+  [ "$status" -eq 0 ]
+  grep -F -- "--timeout-coefficient 25" "${CALLS_LOG}"
 }

@@ -11,6 +11,11 @@ MUTATION_SCORE_THRESHOLD="${MUTATION_SCORE_THRESHOLD:-80}"
 MUTATOR_COVERAGE_THRESHOLD="${MUTATOR_COVERAGE_THRESHOLD:-70}"
 MUTATION_EXCLUDE_FILES="${MUTATION_EXCLUDE_FILES:-}"
 MUTATION_TIMEOUT_SECONDS="${MUTATION_TIMEOUT_SECONDS:-600}"
+#R045: Default gremlins' --timeout-coefficient to a value that fits a cold Go
+# build cache. Gremlins' built-in default (3) gives ~7.5s per mutation on this
+# repo, which is too tight after cache invalidation and causes spurious
+# TIMED OUT verdicts (which gremlins excludes from its test_efficacy formula).
+MUTATION_TIMEOUT_COEFFICIENT="${MUTATION_TIMEOUT_COEFFICIENT:-20}"
 
 if [[ "${REPORT_DIR}" != /* ]]; then
   REPORT_DIR="${SCRIPT_DIR}/${REPORT_DIR#./}"
@@ -59,10 +64,12 @@ if ! command -v go >/dev/null 2>&1; then
   exit 1
 fi
 GREMLINS_CMD="gremlins"
+resolved_gremlins=""
 if resolved_gremlins="$(resolve_go_tool gremlins)"; then
   GREMLINS_CMD="${resolved_gremlins}"
   if [ "${GREMLINS_CMD}" != "gremlins" ]; then
-    export PATH="$(dirname "${GREMLINS_CMD}"):${PATH}"
+    resolved_gremlins_dir="$(dirname "${GREMLINS_CMD}")"
+    export PATH="${resolved_gremlins_dir}:${PATH}"
   fi
 else
   echo "❌ Missing required command: gremlins"
@@ -84,6 +91,29 @@ if [ "$PREFLIGHT_EXIT" -ne 0 ]; then
   exit 1
 fi
 echo "✅ Preflight passed."
+
+#R012: Warm Go build/test caches before gremlins so per-mutation `go test`
+# invocations don't pay full cold-build cost and exceed gremlins' timeout.
+# Mutation workers reuse the user's GOCACHE across temp working directories,
+# so building and test-compiling every package once up front turns the
+# per-mutation rebuild into a single-file recompile.
+echo ""
+echo "▶ Warming Go build/test caches..."
+WARMUP_OUTPUT="$(mktemp)"
+set +e
+go build ./... > "$WARMUP_OUTPUT" 2>&1
+WARMUP_EXIT=$?
+if [ "$WARMUP_EXIT" -eq 0 ]; then
+  go test -count=1 -run '^$' ./... >> "$WARMUP_OUTPUT" 2>&1
+  WARMUP_EXIT=$?
+fi
+set -e
+if [ "$WARMUP_EXIT" -ne 0 ]; then
+  echo "❌ Cache warm-up failed (go build / go test compile)."
+  cat "$WARMUP_OUTPUT"
+  exit 1
+fi
+echo "✅ Cache warm-up complete."
 
 #R025: Build --exclude-files regex flags from MUTATION_EXCLUDE_FILES.
 GREMLINS_EXCLUDE_ARGS=()
@@ -135,6 +165,7 @@ rm -f "$GREMLINS_JSON"
 set +e
 run_with_timeout "$MUTATION_TIMEOUT_SECONDS" \
   "$GREMLINS_CMD" unleash --tags '' \
+  --timeout-coefficient "$MUTATION_TIMEOUT_COEFFICIENT" \
   ${GREMLINS_EXCLUDE_ARGS[@]+"${GREMLINS_EXCLUDE_ARGS[@]}"} \
   -o "$GREMLINS_JSON" > "$GREMLINS_OUTPUT" 2>&1
 GREMLINS_EXIT=$?

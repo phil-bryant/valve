@@ -441,3 +441,44 @@ EOF
   run rg "gremlins" "${TMP_ROOT}/go-install.log"
   [ "$status" -eq 0 ]
 }
+
+@test "R060: accepts preinstalled gremlins from GOPATH bin when GOBIN is empty" {
+  #R060-T04: Run with empty GOBIN and gremlins preinstalled in GOPATH/bin verifies fallback resolution without reinstall.
+  #R060
+  create_brew_stub
+  create_1psa_stub
+  mkdir -p "${TMP_ROOT}/go-path/bin"
+  cat > "${TMP_ROOT}/go-path/bin/gremlins" <<'EOF'
+#!/bin/bash
+exit 0
+EOF
+  chmod +x "${TMP_ROOT}/go-path/bin/gremlins"
+  cat > "${STUB_BIN}/go" <<'EOF'
+#!/bin/bash
+if [ "$1" = "version" ]; then
+  echo "go version go1.22.9 darwin/arm64"
+  exit 0
+fi
+if [ "$1" = "env" ] && [ "$2" = "GOBIN" ]; then
+  echo ""
+  exit 0
+fi
+if [ "$1" = "env" ] && [ "$2" = "GOPATH" ]; then
+  echo "${GO_PATH_DIR}"
+  exit 0
+fi
+if [ "$1" = "install" ]; then
+  printf "go install %s\n" "$2" >> "${GO_INSTALL_LOG:-/dev/null}"
+  exit 0
+fi
+exit 0
+EOF
+  chmod +x "${STUB_BIN}/go"
+  run env GO_PATH_DIR="${TMP_ROOT}/go-path" PATH="${STUB_BIN}:/usr/bin:/bin" BREW_LOG="${TMP_ROOT}/brew.log" GO_INSTALL_LOG="${TMP_ROOT}/go-install.log" STUB_BIN="${STUB_BIN}" ZAP_APP_PATH="${ZAP_APP_PATH}" /bin/bash "${SCRIPT_PATH}"
+  [ "$status" -eq 0 ]
+  [[ "${output}" == *"[gremlins] Available via ${TMP_ROOT}/go-path/bin/gremlins"* ]]
+  if [ -f "${TMP_ROOT}/go-install.log" ]; then
+    run rg "gremlins" "${TMP_ROOT}/go-install.log"
+    [ "$status" -ne 0 ]
+  fi
+}

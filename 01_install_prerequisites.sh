@@ -171,10 +171,13 @@ ensure_1psa() {
 ensure_gremlins() {
     #R060: Ensure mutation testing tooling is available for step-06.
     local gremlins_path=""
+    local gremlins_dir=""
     echo "[gremlins] Checking..."
-    if gremlins_path="$(resolve_go_tool gremlins)"; then
+    gremlins_path="$(resolve_go_tool gremlins)" || true
+    if [ -n "${gremlins_path}" ]; then
         if [ "${gremlins_path}" != "gremlins" ]; then
-            export PATH="$(dirname "${gremlins_path}"):${PATH}"
+            gremlins_dir="$(dirname "${gremlins_path}")"
+            export PATH="${gremlins_dir}:${PATH}"
             echo "✅ [gremlins] Available via ${gremlins_path}"
             return
         fi
@@ -183,9 +186,11 @@ ensure_gremlins() {
     fi
     echo "⚠️  [gremlins] Missing; installing via go install..."
     go install github.com/go-gremlins/gremlins/cmd/gremlins@latest
-    if gremlins_path="$(resolve_go_tool gremlins)"; then
+    gremlins_path="$(resolve_go_tool gremlins)" || true
+    if [ -n "${gremlins_path}" ]; then
         if [ "${gremlins_path}" != "gremlins" ]; then
-            export PATH="$(dirname "${gremlins_path}"):${PATH}"
+            gremlins_dir="$(dirname "${gremlins_path}")"
+            export PATH="${gremlins_dir}:${PATH}"
             echo "✅ [gremlins] Installed and available via ${gremlins_path}"
             return
         fi
