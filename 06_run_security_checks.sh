@@ -16,7 +16,13 @@ DAST_BASE_URL="${DAST_BASE_URL:-}"
 DAST_ZAP_TARGET_URL="${DAST_ZAP_TARGET_URL:-}"
 DAST_UPLOAD_ENDPOINT="${DAST_UPLOAD_ENDPOINT:-http://127.0.0.1:8081/v1/events/batch}"
 ZAP_APP_PATH="${ZAP_APP_PATH:-/Applications/ZAP.app}"
-DAST_IGNORED_ALERT_REFS="${DAST_IGNORED_ALERT_REFS:-10055-13,10062}"
+#R040: Default suppression list:
+#   10055-13  Known API-noise false positive (CSP missing on JSON APIs).
+#   10062     ZAP daemon UI noise that surfaces when scanning the ZAP CLI itself.
+#   10106     "HTTP Only Site" — by-design when DAST auto-boots a local http://
+#             dev service. Operators running DAST against a real HTTPS deployment
+#             should remove 10106 from DAST_IGNORED_ALERT_REFS.
+DAST_IGNORED_ALERT_REFS="${DAST_IGNORED_ALERT_REFS:-10055-13,10062,10106}"
 DAST_HEALTH_PROBE_TIMEOUT_SECONDS="${DAST_HEALTH_PROBE_TIMEOUT_SECONDS:-5}"
 DAST_ZAP_TIMEOUT_SECONDS="${DAST_ZAP_TIMEOUT_SECONDS:-180}"
 DAST_AUTO_BOOT="${DAST_AUTO_BOOT:-true}"
@@ -26,14 +32,16 @@ SCHEMATHESIS_SCHEMA_PATH="${SCHEMATHESIS_SCHEMA_PATH:-${SCRIPT_DIR}/openapi/valv
 SCHEMATHESIS_TIMEOUT_SECONDS="${SCHEMATHESIS_TIMEOUT_SECONDS:-180}"
 SCHEMATHESIS_SEED="${SCHEMATHESIS_SEED:-424242}"
 SCHEMATHESIS_MAX_EXAMPLES="${SCHEMATHESIS_MAX_EXAMPLES:-25}"
-VALVE_DATABASE_1PSA_ITEM="localhost_postgres_valve"
+VALVE_DATABASE_1PSA_ITEM="${VALVE_DATABASE_1PSA_ITEM:-localhost_postgres_valve}"
 VALVE_DATABASE_NAME="${VALVE_DATABASE_NAME:-valve}"
 VALVE_DATABASE_SSLMODE="${VALVE_DATABASE_SSLMODE:-disable}"
-DAST_BASE_URL_1PSA_ITEM="${DAST_BASE_URL_1PSA_ITEM:-${VALVE_DATABASE_1PSA_ITEM}}"
-DAST_DEFAULT_HOST="${DAST_DEFAULT_HOST:-127.0.0.1}"
-DAST_DEFAULT_PORT="${DAST_DEFAULT_PORT:-8090}"
+DAST_BASE_URL_1PSA_ITEM="${DAST_BASE_URL_1PSA_ITEM:-VALVE_SERVICE_ENDPOINT}"
 
 DAST_APP_PID=""
+#R030: Track the auto-boot session/process group leader so cleanup can reap
+# both `go run` and the spawned valve binary (the binary is a grandchild that
+# would otherwise be reparented to init and keep holding the listen port).
+DAST_APP_PGID=""
 
 if [[ "${REPORT_DIR}" != /* ]]; then
   REPORT_DIR="${SCRIPT_DIR}/${REPORT_DIR#./}"
@@ -42,8 +50,14 @@ fi
 mkdir -p "$REPORT_DIR"
 
 cleanup_dast_app() {
+  if [[ -n "${DAST_APP_PGID}" ]]; then
+    #R030: Negative PID signals the entire process group, killing `go run` and
+    # the actual valve listener it spawned in one shot. Errors are tolerated
+    # because individual members of the group may already have exited.
+    kill -TERM -- "-${DAST_APP_PGID}" >/dev/null 2>&1 || true
+  fi
   if [[ -n "${DAST_APP_PID}" ]] && kill -0 "${DAST_APP_PID}" >/dev/null 2>&1; then
-    kill "${DAST_APP_PID}" >/dev/null 2>&1 || true
+    kill -TERM "${DAST_APP_PID}" >/dev/null 2>&1 || true
     wait "${DAST_APP_PID}" >/dev/null 2>&1 || true
   fi
 }
@@ -170,6 +184,77 @@ print(f"{host}:{port}")
 PY
 }
 
+#R030: Print a diagnostic log file with each line indented, robust to NUL bytes.
+# macOS BSD sed aborts ("Assertion failed: (advance > 0)") when an input file
+# contains NUL bytes, which can happen when an orphan auto-boot child kept the
+# old fd open across our `>` truncate and wrote past the new logical EOF.
+# Strip NULs defensively so diagnostic dumps never crash the script.
+print_indented_log() {
+  local log_path="$1"
+  if [[ ! -f "${log_path}" ]]; then
+    return 0
+  fi
+  tr -d '\0' < "${log_path}" | sed 's/^/  /' || true
+}
+
+#R030: Detect if the DAST bind address is already in use before auto-boot.
+# When the port is taken (most often by a leaked auto-boot child from a prior
+# run), surface the holding process so the operator gets actionable remediation
+# instead of a confusing post-failure log dump from `go run`.
+preflight_dast_bind_address() {
+  local bind_addr="$1"
+  python3 - "${bind_addr}" <<'PY'
+import socket
+import sys
+
+bind_addr = sys.argv[1]
+host, _, port = bind_addr.rpartition(":")
+host = host or "127.0.0.1"
+try:
+    port_num = int(port)
+except ValueError:
+    sys.exit(2)
+
+last_err = None
+for family, _, _, _, sockaddr in socket.getaddrinfo(
+    host, port_num, type=socket.SOCK_STREAM
+):
+    sock = socket.socket(family, socket.SOCK_STREAM)
+    try:
+        sock.bind(sockaddr)
+    except OSError as exc:
+        last_err = exc
+        continue
+    finally:
+        sock.close()
+    sys.exit(0)
+
+if last_err is not None:
+    sys.exit(1)
+sys.exit(2)
+PY
+}
+
+#R030: Best-effort identification of the process holding a TCP port for diagnostics.
+describe_port_holder() {
+  local bind_addr="$1"
+  local port="${bind_addr##*:}"
+  if [[ -z "${port}" || ! "${port}" =~ ^[0-9]+$ ]]; then
+    return 0
+  fi
+  if ! command -v lsof >/dev/null 2>&1; then
+    echo "  (install lsof for PID-level diagnostics)"
+    return 0
+  fi
+  local lsof_out=""
+  lsof_out="$(lsof -nP -iTCP:"${port}" -sTCP:LISTEN 2>/dev/null || true)"
+  if [[ -z "${lsof_out}" ]]; then
+    echo "  (no listener reported by lsof; the conflict may be transient)"
+    return 0
+  fi
+  printf '%s\n' "${lsof_out}" | sed 's/^/  /'
+}
+
 wait_for_healthz() {
   local base_url="$1"
   local timeout_seconds="$2"
@@ -180,10 +265,20 @@ wait_for_healthz() {
     if [[ -n "${app_pid}" ]] && ! kill -0 "${app_pid}" >/dev/null 2>&1; then
       return 2
     fi
-    set +e
-    run_with_timeout 2 curl -fsS --max-time 2 "${base_url}/healthz" > "${REPORT_DIR}/dast-health.log"
-    local health_exit=$?
-    set -e
+    #R030: Capture curl stderr alongside stdout so transient "connection
+    # refused" messages while the auto-boot is still warming up do not appear
+    # as scary noise on the operator's terminal. The last iteration's output
+    # remains in dast-health.log so we can dump it on a real timeout failure.
+    #
+    # The `|| health_exit=$?` pattern captures the non-zero curl exit without
+    # tripping the caller's `set -e`. We intentionally avoid toggling global
+    # `set +e`/`set -e` here because shell options leak across the function
+    # boundary, which previously made wait_for_healthz's non-zero return value
+    # silently kill the script before the post-failure diagnostic dump could
+    # print.
+    local health_exit=0
+    run_with_timeout 2 curl -fsS --max-time 2 "${base_url}/healthz" \
+      > "${REPORT_DIR}/dast-health.log" 2>&1 || health_exit=$?
     if [[ "$health_exit" -eq 0 ]]; then
       return 0
     fi
@@ -219,7 +314,12 @@ compose_database_url_from_1psa() {
   local database_password=""
   local database_host=""
   local database_port=""
-  database_user="$(read_database_field_from_1psa "username")"
+  # Prefer explicit username when present, but keep the historical valve default.
+  if database_user="$(read_optional_1psa_field "${VALVE_DATABASE_1PSA_ITEM}" "username")"; then
+    :
+  else
+    database_user="valve"
+  fi
   database_password="$(read_database_field_from_1psa "password")"
   database_host="$(read_database_field_from_1psa "host")"
   database_port="$(read_database_field_from_1psa "port")"
@@ -276,9 +376,10 @@ resolve_auto_boot_dast_base_url() {
   local base_url=""
   local service_port=""
   local service_host=""
+  local service_protocol=""
   local field_name=""
   local -a base_url_fields=("dast_base_url" "service_base_url" "base_url")
-  local -a port_fields=("dast_port" "service_port" "app_port" "http_port")
+  local -a port_fields=("dast_port" "service_port" "app_port" "http_port" "port")
 
   for field_name in "${base_url_fields[@]}"; do
     if base_url="$(read_optional_1psa_field "${DAST_BASE_URL_1PSA_ITEM}" "${field_name}")"; then
@@ -297,18 +398,28 @@ resolve_auto_boot_dast_base_url() {
         echo "❌ 1psa returned an invalid DAST service port for item/field: ${DAST_BASE_URL_1PSA_ITEM}/${field_name}"
         exit 1
       fi
-      service_host="${DAST_DEFAULT_HOST}"
+      service_host="127.0.0.1"
       if service_host="$(read_optional_1psa_field "${DAST_BASE_URL_1PSA_ITEM}" "service_host")"; then
         :
+      elif service_host="$(read_optional_1psa_field "${DAST_BASE_URL_1PSA_ITEM}" "host")"; then
+        :
       else
-        service_host="${DAST_DEFAULT_HOST}"
+        service_host="127.0.0.1"
       fi
-      printf 'http://%s:%s' "${service_host}" "${service_port}"
+      if service_protocol="$(read_optional_1psa_field "${DAST_BASE_URL_1PSA_ITEM}" "protocol")"; then
+        if [[ "${service_protocol}" != "http" && "${service_protocol}" != "https" ]]; then
+          echo "❌ 1psa returned an invalid DAST protocol for item/field: ${DAST_BASE_URL_1PSA_ITEM}/protocol"
+          exit 1
+        fi
+      else
+        service_protocol="http"
+      fi
+      printf '%s://%s:%s' "${service_protocol}" "${service_host}" "${service_port}"
       return 0
     fi
   done
 
-  printf 'http://%s:%s' "${DAST_DEFAULT_HOST}" "${DAST_DEFAULT_PORT}"
+  return 1
 }
 
 run_sast_lane() {
@@ -661,8 +772,14 @@ run_dast_lane() {
     echo "ℹ️  DAST lane skipped."
     return 0
   fi
+  #R060: Emit explicit lane-start marker after SAST completion to prevent hang ambiguity.
+  echo "▶ Starting Dynamic Application Security Testing (DAST) lane..."
 
   local effective_dast_base_url="${DAST_BASE_URL:-http://127.0.0.1:8080}"
+  #R040: Track the service auth key used by both valve and Schemathesis. When
+  # auto-boot is enabled the key may be generated below; for non-auto-boot
+  # runs the operator-provided VALVE_SERVICE_AUTH_KEY is the source of truth.
+  local DAST_SERVICE_AUTH_KEY="${VALVE_SERVICE_AUTH_KEY:-}"
   require_command curl
   require_command python3
   if [[ "${RUN_SCHEMATHESIS}" == "true" ]]; then
@@ -683,7 +800,10 @@ run_dast_lane() {
     require_command go
     require_command 1psa
     if ! effective_dast_base_url="$(resolve_auto_boot_dast_base_url)"; then
-      echo "❌ Unable to derive DAST_BASE_URL from 1psa: ${VALVE_DATABASE_1PSA_ITEM}/host and ${VALVE_DATABASE_1PSA_ITEM}/port"
+      echo "❌ Unable to resolve DAST endpoint."
+      echo "Set DAST_BASE_URL or populate one of these 1psa fields on '${DAST_BASE_URL_1PSA_ITEM}':"
+      echo "  dast_base_url, service_base_url, base_url, dast_port, service_port, app_port, http_port, port"
+      echo "  optional companion fields: service_host or host, protocol"
       exit 1
     fi
     local database_url=""
@@ -697,16 +817,57 @@ run_dast_lane() {
       exit 1
     fi
     local upload_endpoint="${VALVE_UPLOAD_ENDPOINT:-${DAST_UPLOAD_ENDPOINT}}"
+    #R040: Provision a service auth key so DAST contract testing can pass the
+    # `X-Valve-Service-Key` header and exercise authenticated endpoints. When
+    # the operator already set VALVE_SERVICE_AUTH_KEY we reuse it; otherwise
+    # we mint an ephemeral random key for the lifetime of this run only and
+    # propagate the same value to Schemathesis below.
+    if [[ -z "${VALVE_SERVICE_AUTH_KEY:-}" ]]; then
+      VALVE_SERVICE_AUTH_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+      export VALVE_SERVICE_AUTH_KEY
+    fi
+    DAST_SERVICE_AUTH_KEY="${VALVE_SERVICE_AUTH_KEY}"
     print_tool_header \
       "go run ./cmd/valve" \
       "Auto-boots the local service so DAST has a deterministic target." \
       "Uses VALVE_ADDR from DAST_BASE_URL plus DB and upload endpoint wiring." \
       "https://go.dev/"
+    #R030: Preflight the bind address; a leftover orphan from a prior crashed
+    # run is a common cause of "address already in use" and would otherwise
+    # leave the operator chasing a misleading post-boot error.
+    set +e
+    preflight_dast_bind_address "${dast_bind_addr}"
+    local preflight_status=$?
+    set -e
+    if [[ "${preflight_status}" -ne 0 ]]; then
+      echo "❌ DAST bind address already in use: ${dast_bind_addr}"
+      echo "▶ Listener currently holding the port:"
+      describe_port_holder "${dast_bind_addr}"
+      echo "Free the port (e.g. \`kill <PID>\`) or override DAST_BASE_URL/dast_port and rerun."
+      exit 1
+    fi
     echo "▶ Auto-booting valve service for DAST at ${effective_dast_base_url}"
-    VALVE_ADDR="${dast_bind_addr}" VALVE_DATABASE_URL="${database_url}" VALVE_UPLOAD_ENDPOINT="${upload_endpoint}" go run ./cmd/valve > "${REPORT_DIR}/dast-app.log" 2>&1 &
+    #R030: Run the auto-boot child inside its own session via os.setsid() so
+    # `cleanup_dast_app` can SIGTERM the whole tree (`go run` + spawned binary)
+    # using the negative-PID syntax. Without this, killing `go run` would
+    # orphan the actual valve listener and leak the bind address.
+    VALVE_ADDR="${dast_bind_addr}" \
+    VALVE_DATABASE_URL="${database_url}" \
+    VALVE_UPLOAD_ENDPOINT="${upload_endpoint}" \
+    VALVE_SERVICE_AUTH_KEY="${VALVE_SERVICE_AUTH_KEY}" \
+      python3 -c '
+import os, sys
+os.setsid()
+os.execvp(sys.argv[1], sys.argv[1:])
+' go run ./cmd/valve > "${REPORT_DIR}/dast-app.log" 2>&1 &
     DAST_APP_PID="$!"
+    DAST_APP_PGID="${DAST_APP_PID}"
   fi
-  local effective_zap_target_url="${DAST_ZAP_TARGET_URL:-${effective_dast_base_url}}"
+  #R035: Default the ZAP entry URL to a documented 2xx route (`/healthz`) so
+  # ZAP CLI's quick scan, which refuses entries that do not return 2xx, has a
+  # valid starting point even when the service has no `/` handler. Operators
+  # can override DAST_ZAP_TARGET_URL to point at a richer crawl surface.
+  local effective_zap_target_url="${DAST_ZAP_TARGET_URL:-${effective_dast_base_url%/}/healthz}"
   local zap_runner_cmd=""
   local zap_runner_mode=""
   if zap_runner_cmd="$(resolve_zap_baseline)"; then
@@ -731,38 +892,36 @@ run_dast_lane() {
   if [[ "${DAST_AUTO_BOOT}" == "true" ]]; then
     health_timeout_seconds="${DAST_AUTO_BOOT_TIMEOUT_SECONDS}"
   fi
-  set +e
-  wait_for_healthz "${effective_dast_base_url}" "${health_timeout_seconds}" "${DAST_APP_PID}"
-  local health_status=$?
-  set -e
+  #R030: Capture wait_for_healthz's exit status via `||` rather than toggling
+  # `set -e`, so a non-zero return cannot abort the script before the
+  # diagnostic dump below has a chance to run.
+  local health_status=0
+  wait_for_healthz "${effective_dast_base_url}" "${health_timeout_seconds}" "${DAST_APP_PID}" \
+    || health_status=$?
   if [[ "${health_status}" -ne 0 ]]; then
     if [[ "${health_status}" -eq 2 ]]; then
       echo "❌ Auto-booted valve service exited before DAST health probe succeeded."
-      if [[ -f "${REPORT_DIR}/dast-app.log" ]]; then
-        echo "▶ Auto-boot log:"
-        sed 's/^/  /' "${REPORT_DIR}/dast-app.log"
-      fi
+      echo "▶ Auto-boot log:"
+      print_indented_log "${REPORT_DIR}/dast-app.log"
     else
       echo "❌ DAST health probe failed: ${effective_dast_base_url}/healthz"
+      echo "▶ Last health probe output:"
+      print_indented_log "${REPORT_DIR}/dast-health.log"
     fi
     exit 1
   fi
   if [[ -n "${DAST_APP_PID}" ]] && ! kill -0 "${DAST_APP_PID}" >/dev/null 2>&1; then
     echo "❌ Auto-booted valve service exited before DAST scans began."
-    if [[ -f "${REPORT_DIR}/dast-app.log" ]]; then
-      echo "▶ Auto-boot log:"
-      sed 's/^/  /' "${REPORT_DIR}/dast-app.log"
-    fi
+    echo "▶ Auto-boot log:"
+    print_indented_log "${REPORT_DIR}/dast-app.log"
     exit 1
   fi
   if [[ -n "${DAST_APP_PID}" ]]; then
     sleep 1
     if ! kill -0 "${DAST_APP_PID}" >/dev/null 2>&1; then
       echo "❌ Auto-booted valve service exited during DAST readiness checks."
-      if [[ -f "${REPORT_DIR}/dast-app.log" ]]; then
-        echo "▶ Auto-boot log:"
-        sed 's/^/  /' "${REPORT_DIR}/dast-app.log"
-      fi
+      echo "▶ Auto-boot log:"
+      print_indented_log "${REPORT_DIR}/dast-app.log"
       exit 1
     fi
   fi
@@ -775,7 +934,19 @@ run_dast_lane() {
       "Finds contract mismatches by generating and exercising request scenarios." \
       "https://schemathesis.readthedocs.io/"
     echo "▶ Running Schemathesis against ${SCHEMATHESIS_SCHEMA_PATH}"
+    #R040: Forward the service auth header to Schemathesis so authenticated
+    # operations (e.g. POST /v1/piston/upload-target) reach their documented
+    # response codes instead of being uniformly rejected with 401. When no
+    # key is available (e.g. operator opted out of auto-boot and did not set
+    # VALVE_SERVICE_AUTH_KEY) we skip the header so the request still mirrors
+    # whatever the external service expects.
+    local -a schemathesis_extra_args=()
+    if [[ -n "${DAST_SERVICE_AUTH_KEY}" ]]; then
+      schemathesis_extra_args+=(--header "X-Valve-Service-Key: ${DAST_SERVICE_AUTH_KEY}")
+    fi
     set +e
+    #R040: Use the `${arr[@]+...}` pattern so bash's `set -u` does not trip on
+    # an empty extra-args array when no service key is available.
     run_with_timeout "${SCHEMATHESIS_TIMEOUT_SECONDS}" \
       schemathesis run "${SCHEMATHESIS_SCHEMA_PATH}" \
       --url "${effective_dast_base_url}" \
@@ -784,6 +955,7 @@ run_dast_lane() {
       --max-examples "${SCHEMATHESIS_MAX_EXAMPLES}" \
       --report junit \
       --report-junit-path "${REPORT_DIR}/schemathesis-junit.xml" \
+      ${schemathesis_extra_args[@]+"${schemathesis_extra_args[@]}"} \
       > "${REPORT_DIR}/schemathesis.log" 2>&1
     schemathesis_exit=$?
     set -e
@@ -852,6 +1024,17 @@ run_dast_lane() {
   fi
   if [[ ! -s "${zap_report_path}" ]]; then
     echo "❌ OWASP ZAP baseline report was not generated."
+    exit 1
+  fi
+  #R035: ZAP CLI's quick scan exits 0 even when the entry URL does not return
+  # 2xx, leaving the summary to misleadingly report "no alerts" when nothing
+  # was actually scanned. Detect this exact failure mode in the live log and
+  # turn it into an explicit fail-fast with actionable remediation.
+  if grep -q "Failed to attack the URL" "${zap_log_path}" 2>/dev/null; then
+    echo "❌ OWASP ZAP could not scan ${zap_target_url}: entry URL did not return 2xx."
+    echo "▶ ZAP output:"
+    print_indented_log "${zap_log_path}"
+    echo "Set DAST_ZAP_TARGET_URL to a path that returns 200 (e.g. \${DAST_BASE_URL}/healthz) and rerun."
     exit 1
   fi
 
@@ -964,9 +1147,15 @@ if gate_failed:
 PY
   if [[ -n "${DAST_APP_PID}" ]] && kill -0 "${DAST_APP_PID}" >/dev/null 2>&1; then
     echo "▶ Stopping auto-booted valve service after DAST"
-    kill "${DAST_APP_PID}" >/dev/null 2>&1 || true
+    #R030: Tear down the entire auto-boot process group so the spawned valve
+    # binary can never outlive this script and leak the bind address.
+    if [[ -n "${DAST_APP_PGID}" ]]; then
+      kill -TERM -- "-${DAST_APP_PGID}" >/dev/null 2>&1 || true
+    fi
+    kill -TERM "${DAST_APP_PID}" >/dev/null 2>&1 || true
     wait "${DAST_APP_PID}" >/dev/null 2>&1 || true
     DAST_APP_PID=""
+    DAST_APP_PGID=""
   fi
   echo "✅ Dynamic Application Security Testing (DAST) checks completed."
 }

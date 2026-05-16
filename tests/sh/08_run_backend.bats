@@ -33,7 +33,11 @@ EOF
 make_1psa_stub() {
   cat > "${STUB_BIN}/1psa" <<'EOF'
 #!/usr/bin/env bash
+endpoint_item="${VALVE_ENDPOINT_1PSA_ITEM:-VALVE_SERVICE_ENDPOINT}"
 if [ "$#" -eq 3 ] && [ "$1" = "-f" ] && [ "$2" = "${VALVE_PSA_ITEM:-localhost_postgres_valve}" ] && [ "$3" = "username" ]; then
+  if [ "${ONEPSA_DATABASE_USERNAME_MISSING:-false}" = "true" ]; then
+    exit 2
+  fi
   printf '%s' "${ONEPSA_DATABASE_USERNAME_VALUE:-valve}"
   exit 0
 fi
@@ -47,6 +51,20 @@ if [ "$#" -eq 3 ] && [ "$1" = "-f" ] && [ "$2" = "${VALVE_PSA_ITEM:-localhost_po
 fi
 if [ "$#" -eq 3 ] && [ "$1" = "-f" ] && [ "$2" = "${VALVE_PSA_ITEM:-localhost_postgres_valve}" ] && [ "$3" = "port" ]; then
   printf '%s' "${ONEPSA_DATABASE_PORT_VALUE:-5432}"
+  exit 0
+fi
+if [ "$#" -eq 3 ] && [ "$1" = "-f" ] && [ "$2" = "$endpoint_item" ] && [ "$3" = "host" ]; then
+  if [ "${ONEPSA_ENDPOINT_FIELDS_MISSING:-false}" = "true" ]; then
+    exit 2
+  fi
+  printf '%s' "${ONEPSA_ENDPOINT_HOST_VALUE:-localhost}"
+  exit 0
+fi
+if [ "$#" -eq 3 ] && [ "$1" = "-f" ] && [ "$2" = "$endpoint_item" ] && [ "$3" = "port" ]; then
+  if [ "${ONEPSA_ENDPOINT_FIELDS_MISSING:-false}" = "true" ]; then
+    exit 2
+  fi
+  printf '%s' "${ONEPSA_ENDPOINT_PORT_VALUE:-8090}"
   exit 0
 fi
 exit 2
@@ -68,7 +86,7 @@ teardown() {
 @test "runs from non-repo cwd and resolves backend launch from script root" {
   #R001
   mkdir -p "${TEST_TMPDIR}/elsewhere"
-  run env PATH="${PATH}" VALVE_UPLOAD_ENDPOINT="https://upload" bash -c "cd '${TEST_TMPDIR}/elsewhere' && bash '${FIXTURE_ROOT}/08_run_backend.sh'"
+  run env PATH="${PATH}" VALVE_ADDR=":8090" VALVE_UPLOAD_ENDPOINT="https://upload" bash -c "cd '${TEST_TMPDIR}/elsewhere' && bash '${FIXTURE_ROOT}/08_run_backend.sh'"
   [ "$status" -eq 0 ]
   grep -F "go run ./cmd/valve" "${CALLS_LOG}"
 }
@@ -95,12 +113,23 @@ teardown() {
 
 @test "composes database url from 1psa values when env override is missing" {
   #R010
-  run env PATH="${PATH}" ONEPSA_DATABASE_USERNAME_VALUE="user_a" ONEPSA_DATABASE_PW_VALUE="pw_a" ONEPSA_DATABASE_HOST_VALUE="db.local" ONEPSA_DATABASE_PORT_VALUE="6543" VALVE_UPLOAD_ENDPOINT="https://upload" bash "${FIXTURE_ROOT}/08_run_backend.sh"
+  run env PATH="${PATH}" VALVE_ADDR=":8090" ONEPSA_DATABASE_USERNAME_VALUE="user_a" ONEPSA_DATABASE_PW_VALUE="pw_a" ONEPSA_DATABASE_HOST_VALUE="db.local" ONEPSA_DATABASE_PORT_VALUE="6543" VALVE_UPLOAD_ENDPOINT="https://upload" bash "${FIXTURE_ROOT}/08_run_backend.sh"
   [ "$status" -eq 0 ]
   local db_url_line
   db_url_line="$(grep -F "VALVE_DATABASE_URL=" "${CALLS_LOG}")"
   local db_url="${db_url_line#VALVE_DATABASE_URL=postgres://}"
   [[ "${db_url}" == user_a:*@db.local:6543/valve\?sslmode=disable ]]
+  [[ "${db_url}" == *"pw_a"* ]]
+}
+
+@test "defaults database username to valve when 1psa username is missing" {
+  #R010
+  run env PATH="${PATH}" VALVE_ADDR=":8090" ONEPSA_DATABASE_USERNAME_MISSING="true" ONEPSA_DATABASE_PW_VALUE="pw_a" ONEPSA_DATABASE_HOST_VALUE="db.local" ONEPSA_DATABASE_PORT_VALUE="6543" VALVE_UPLOAD_ENDPOINT="https://upload" bash "${FIXTURE_ROOT}/08_run_backend.sh"
+  [ "$status" -eq 0 ]
+  local db_url_line
+  db_url_line="$(grep -F "VALVE_DATABASE_URL=" "${CALLS_LOG}")"
+  local db_url="${db_url_line#VALVE_DATABASE_URL=postgres://}"
+  [[ "${db_url}" == valve:*@db.local:6543/valve\?sslmode=disable ]]
   [[ "${db_url}" == *"pw_a"* ]]
 }
 
@@ -113,7 +142,7 @@ teardown() {
 
 @test "derives upload endpoint when VALVE_UPLOAD_ENDPOINT is missing" {
   #R015
-  run env PATH="${PATH}" GO_RESOLVER_HOST_VALUE="edgebox.local" bash "${FIXTURE_ROOT}/08_run_backend.sh"
+  run env PATH="${PATH}" VALVE_ADDR=":8090" GO_RESOLVER_HOST_VALUE="edgebox.local" bash "${FIXTURE_ROOT}/08_run_backend.sh"
   [ "$status" -eq 0 ]
   grep -F "VALVE_UPLOAD_ENDPOINT=http://edgebox.local:8081/v1/events/batch" "${CALLS_LOG}"
 }
@@ -134,11 +163,17 @@ teardown() {
   [[ "$output" == *"resolver_debug stage=net.LookupIP host=phils-MacBook-Pro err=no such host"* ]]
 }
 
-@test "uses default bind address when VALVE_ADDR is unset" {
+@test "derives bind address from VALVE_SERVICE_ENDPOINT when VALVE_ADDR is unset" {
   #R020
-  run env PATH="${PATH}" VALVE_UPLOAD_ENDPOINT="https://upload" bash "${FIXTURE_ROOT}/08_run_backend.sh"
+  run env PATH="${PATH}" ONEPSA_ENDPOINT_HOST_VALUE="localhost" ONEPSA_ENDPOINT_PORT_VALUE="8675" VALVE_UPLOAD_ENDPOINT="https://upload" bash "${FIXTURE_ROOT}/08_run_backend.sh"
   [ "$status" -eq 0 ]
-  grep -F "go run ./cmd/valve" "${CALLS_LOG}"
+  grep -F "VALVE_ADDR=localhost:8675" "${CALLS_LOG}"
+}
+
+@test "falls back to default bind address when endpoint item is missing" {
+  #R020
+  run env PATH="${PATH}" ONEPSA_ENDPOINT_FIELDS_MISSING="true" VALVE_UPLOAD_ENDPOINT="https://upload" bash "${FIXTURE_ROOT}/08_run_backend.sh"
+  [ "$status" -eq 0 ]
   grep -F "VALVE_ADDR=:8090" "${CALLS_LOG}"
 }
 
@@ -151,14 +186,14 @@ teardown() {
 
 @test "uses dev authorizer allow-all true by default" {
   #R020
-  run env PATH="${PATH}" VALVE_UPLOAD_ENDPOINT="https://upload" bash "${FIXTURE_ROOT}/08_run_backend.sh"
+  run env PATH="${PATH}" VALVE_ADDR=":8090" VALVE_UPLOAD_ENDPOINT="https://upload" bash "${FIXTURE_ROOT}/08_run_backend.sh"
   [ "$status" -eq 0 ]
   grep -F "VALVE_DEV_AUTH_ALLOW_ALL=true" "${CALLS_LOG}"
 }
 
 @test "uses explicit dev authorizer override when provided" {
   #R020
-  run env PATH="${PATH}" VALVE_DEV_AUTH_ALLOW_ALL="false" VALVE_UPLOAD_ENDPOINT="https://upload" bash "${FIXTURE_ROOT}/08_run_backend.sh"
+  run env PATH="${PATH}" VALVE_ADDR=":8090" VALVE_DEV_AUTH_ALLOW_ALL="false" VALVE_UPLOAD_ENDPOINT="https://upload" bash "${FIXTURE_ROOT}/08_run_backend.sh"
   [ "$status" -eq 0 ]
   grep -F "VALVE_DEV_AUTH_ALLOW_ALL=false" "${CALLS_LOG}"
 }

@@ -1,8 +1,10 @@
 package security
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -20,7 +22,9 @@ func TestIsServiceAuthorizedUsesConstantTimeMatchSemantics(t *testing.T) {
 }
 
 func TestServiceAuthMiddlewareRejectsUnauthorizedRequests(t *testing.T) {
-	// #R005: Middleware blocks unauthorized requests before downstream execution.
+	// #R005: Middleware blocks unauthorized requests before downstream execution
+	// and emits a JSON-encoded ErrorResponse so the body matches the OpenAPI
+	// contract used by DAST Schemathesis preflight.
 	handler := ServiceAuthMiddleware("svc-key", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
@@ -29,6 +33,18 @@ func TestServiceAuthMiddlewareRejectsUnauthorizedRequests(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401 unauthorized, got %d", rec.Code)
+	}
+	if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, "application/json") {
+		t.Fatalf("expected application/json content type, got %q", got)
+	}
+	var body struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("401 body is not valid JSON: %v (body=%q)", err, rec.Body.String())
+	}
+	if body.Error == "" {
+		t.Fatalf("expected non-empty error field in 401 body, got %+v", body)
 	}
 }
 

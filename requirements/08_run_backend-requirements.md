@@ -28,16 +28,17 @@ Tests:
 - Run with invalid `MANIFOLD_UPLOAD_PORT` and verify explicit non-zero failure output.
 - Run with resolver command failure and verify explicit non-zero failure output includes resolver debug stage/error context.
 
-R020  Statement: Launch backend in foreground with deterministic default bind address.
-Design: Default `VALVE_ADDR` to `:8090`, default `VALVE_DEV_AUTH_ALLOW_ALL` to `true` for local bootstrap, and execute `go run ./cmd/valve` in foreground with `VALVE_ADDR`, `VALVE_DATABASE_URL`, `VALVE_UPLOAD_ENDPOINT`, and `VALVE_DEV_AUTH_ALLOW_ALL`.
+R020  Statement: Launch backend in foreground with explicit bind address configuration.
+Design: Require explicit `VALVE_ADDR` before startup, default `VALVE_DEV_AUTH_ALLOW_ALL` to `true` for local bootstrap, and execute `go run ./cmd/valve` in foreground with `VALVE_ADDR`, `VALVE_DATABASE_URL`, `VALVE_UPLOAD_ENDPOINT`, and `VALVE_DEV_AUTH_ALLOW_ALL`.
 Tests:
-- Run with valid env values and verify `go run ./cmd/valve` invocation and `VALVE_ADDR=:8090` default.
+- Run without `VALVE_ADDR` and verify explicit non-zero failure output.
 - Run with explicit `VALVE_ADDR` override and verify override is passed to `go run`.
 - Run with `VALVE_DEV_AUTH_ALLOW_ALL` unset and verify `true` default is passed to backend launch.
 - Run with explicit `VALVE_DEV_AUTH_ALLOW_ALL=false` and verify override is passed to backend launch.
 
 ## Changelog
 
+- 2026-05-15: Removed implicit `VALVE_ADDR` default and now require explicit backend bind address configuration.
 - 2026-05-11: Added step-08 backend launcher workflow requirements.
 - 2026-05-11: Updated step-08 to resolve Valve DB connection info from 1psa defaults.
 - 2026-05-11: Updated step-08 same-box upload endpoint derivation to use hostname/ip/reverse-lookup flow.

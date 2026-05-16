@@ -38,6 +38,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UploadTargetResponse"
+        "400":
+          description: Malformed request body or missing required identifiers.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Invalid or revoked credential, or missing service authentication.
           content:
@@ -85,10 +91,13 @@ components:
       properties:
         tenant_id:
           type: string
+          minLength: 1
         install_id:
           type: string
+          minLength: 1
         credential_id:
           type: string
+          minLength: 1
     UploadTargetResponse:
       type: object
       additionalProperties: false

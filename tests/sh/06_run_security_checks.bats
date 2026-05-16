@@ -130,22 +130,83 @@ EOF
   chmod +x "${STUB_BIN}/curl"
 }
 
+# curl stub that fails noisily on its first N invocations (mimicking the
+# "connection refused" interval before an auto-boot finishes warming up) and
+# then succeeds. Used to exercise the readiness probe's noise-suppression
+# guarantee: failures must be captured into dast-health.log, not the terminal.
+make_curl_stub_fail_then_succeed() {
+  local fail_count="${1:-1}"
+  local state_file="${TEST_TMPDIR}/curl-stub-state"
+  : > "${state_file}"
+  cat > "${STUB_BIN}/curl" <<EOF
+#!/usr/bin/env bash
+state_file="${state_file}"
+fail_count="${fail_count}"
+count=0
+if [ -s "\${state_file}" ]; then
+  count="\$(cat "\${state_file}")"
+fi
+count=\$((count + 1))
+printf '%s' "\${count}" > "\${state_file}"
+if [ "\${count}" -le "\${fail_count}" ]; then
+  echo "curl: (7) Failed to connect to localhost port 8083 after 0 ms: Couldn't connect to server" >&2
+  exit 7
+fi
+echo "ok"
+exit 0
+EOF
+  chmod +x "${STUB_BIN}/curl"
+}
+
 make_zap_baseline_stub() {
   local report_body="${1:-{\"site\":[{\"alerts\":[]}]}}"
   local exit_code="${2:-0}"
   cat > "${STUB_BIN}/zap-baseline.py" <<EOF
 #!/usr/bin/env bash
 report=""
+target=""
 while [ "\$#" -gt 0 ]; do
   if [ "\$1" = "-J" ]; then
     report="\$2"
     shift 2
     continue
   fi
+  if [ "\$1" = "-t" ]; then
+    target="\$2"
+    shift 2
+    continue
+  fi
   shift
 done
+if [ -n "\${ZAP_BASELINE_STUB_TARGET_LOG:-}" ]; then
+  printf '%s\n' "\${target}" > "\${ZAP_BASELINE_STUB_TARGET_LOG}"
+fi
 printf '%s' '${report_body}' > "\$report"
 exit ${exit_code}
+EOF
+  chmod +x "${STUB_BIN}/zap-baseline.py"
+}
+
+# ZAP baseline stub that simulates ZAP CLI's "Failed to attack the URL" path:
+# the runner prints the diagnostic line to stdout, writes an empty alert
+# report, and exits 0 (which is exactly how real ZAP CLI behaves when the
+# entry URL does not return 2xx).
+make_zap_baseline_stub_404_entry() {
+  cat > "${STUB_BIN}/zap-baseline.py" <<'EOF'
+#!/usr/bin/env bash
+report=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-J" ]; then
+    report="$2"
+    shift 2
+    continue
+  fi
+  shift
+done
+echo "Accessing URL"
+echo "Failed to attack the URL: received a 404 response code, expected 2xx."
+printf '%s' '{"site":[{"alerts":[]}]}' > "$report"
+exit 0
 EOF
   chmod +x "${STUB_BIN}/zap-baseline.py"
 }
@@ -157,6 +218,9 @@ make_schemathesis_stub() {
 junit_path=""
 schema_path=""
 seen_run=false
+# Capture every --header flag pair so tests can assert that the script forwards
+# auth credentials (e.g. X-Valve-Service-Key) to the contract test invocation.
+headers=()
 while [ "$#" -gt 0 ]; do
   if [ "$seen_run" = "false" ] && [ "$1" = "run" ]; then
     seen_run=true
@@ -171,6 +235,11 @@ while [ "$#" -gt 0 ]; do
     shift 2
     continue
   fi
+  if [ "$1" = "--header" ] && [ "$#" -ge 2 ]; then
+    headers+=("$2")
+    shift 2
+    continue
+  fi
   shift
 done
 if [ -n "$junit_path" ]; then
@@ -178,6 +247,12 @@ if [ -n "$junit_path" ]; then
 fi
 if [ -n "${SCHEMATHESIS_STUB_LOG_PATH:-}" ]; then
   printf '%s\n' "$schema_path" > "${SCHEMATHESIS_STUB_LOG_PATH}"
+fi
+if [ -n "${SCHEMATHESIS_STUB_HEADERS_LOG_PATH:-}" ]; then
+  : > "${SCHEMATHESIS_STUB_HEADERS_LOG_PATH}"
+  for h in "${headers[@]}"; do
+    printf '%s\n' "$h" >> "${SCHEMATHESIS_STUB_HEADERS_LOG_PATH}"
+  done
 fi
 printf '%s\n' 'schemathesis stub run'
 exit "${SCHEMATHESIS_STUB_EXIT:-0}"
@@ -187,13 +262,20 @@ EOF
 }
 
 make_go_stub() {
-  cat > "${STUB_BIN}/go" <<'EOF'
+  # Optional first arg overrides the sleep duration the stub stays alive for.
+  # The default of 2s is short enough to keep most tests fast, but tests that
+  # also exercise the readiness/probe loop with retries should pass a longer
+  # value (or use a dedicated long-lived stub) to avoid racing the script's
+  # post-readiness "is the auto-boot still alive" recheck.
+  local sleep_for="${1:-2}"
+  cat > "${STUB_BIN}/go" <<EOF
 #!/usr/bin/env bash
-printf '%s\n' "$*" > "${GO_STUB_LOG_PATH}"
-printf '%s\n' "VALVE_ADDR=${VALVE_ADDR:-}" >> "${GO_STUB_LOG_PATH}"
-printf '%s\n' "VALVE_DATABASE_URL=${VALVE_DATABASE_URL:-}" >> "${GO_STUB_LOG_PATH}"
-printf '%s\n' "VALVE_UPLOAD_ENDPOINT=${VALVE_UPLOAD_ENDPOINT:-}" >> "${GO_STUB_LOG_PATH}"
-sleep 2
+printf '%s\n' "\$*" > "\${GO_STUB_LOG_PATH}"
+printf '%s\n' "VALVE_ADDR=\${VALVE_ADDR:-}" >> "\${GO_STUB_LOG_PATH}"
+printf '%s\n' "VALVE_DATABASE_URL=\${VALVE_DATABASE_URL:-}" >> "\${GO_STUB_LOG_PATH}"
+printf '%s\n' "VALVE_UPLOAD_ENDPOINT=\${VALVE_UPLOAD_ENDPOINT:-}" >> "\${GO_STUB_LOG_PATH}"
+printf '%s\n' "VALVE_SERVICE_AUTH_KEY=\${VALVE_SERVICE_AUTH_KEY:-}" >> "\${GO_STUB_LOG_PATH}"
+sleep ${sleep_for}
 EOF
   chmod +x "${STUB_BIN}/go"
 }
@@ -207,10 +289,42 @@ EOF
   chmod +x "${STUB_BIN}/go"
 }
 
+make_go_stub_writes_nul_log() {
+  # Writes textual content with embedded NUL bytes to mimic the dast-app.log
+  # corruption observed when an orphan auto-boot child kept the old fd open
+  # across the new run's `>` truncate. The textual lines must still appear in
+  # the printed diagnostic dump; the script must not abort on the NUL bytes.
+  cat > "${STUB_BIN}/go" <<'EOF'
+#!/usr/bin/env bash
+printf 'first auto-boot diagnostic line\n'
+printf '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+printf 'second auto-boot diagnostic line after NUL gap\n'
+exit 1
+EOF
+  chmod +x "${STUB_BIN}/go"
+}
+
+make_go_stub_with_lingering_child() {
+  # Mimics `go run`'s real behavior of spawning a long-lived child binary
+  # (the actual valve listener). The child's PID is recorded so the test can
+  # assert that process-group cleanup reaped it, not just the parent stub.
+  cat > "${STUB_BIN}/go" <<EOF
+#!/usr/bin/env bash
+sleep 600 &
+echo "\$!" > "${TEST_TMPDIR}/lingering-child.pid"
+sleep 60
+EOF
+  chmod +x "${STUB_BIN}/go"
+}
+
 make_1psa_stub() {
   cat > "${STUB_BIN}/1psa" <<'EOF'
 #!/usr/bin/env bash
+endpoint_item="${ONEPSA_ENDPOINT_ITEM_NAME:-VALVE_SERVICE_ENDPOINT}"
 if [ "$#" -eq 3 ] && [ "$1" = "-f" ] && [ "$2" = "localhost_postgres_valve" ] && [ "$3" = "username" ]; then
+  if [ "${ONEPSA_DATABASE_USERNAME_MISSING:-false}" = "true" ]; then
+    exit 2
+  fi
   printf '%s' "${ONEPSA_DATABASE_USERNAME_VALUE:-example-user}"
   exit 0
 fi
@@ -226,16 +340,48 @@ if [ "$#" -eq 3 ] && [ "$1" = "-f" ] && [ "$2" = "localhost_postgres_valve" ] &&
   printf '%s' "${ONEPSA_DATABASE_PORT_VALUE:-5432}"
   exit 0
 fi
-if [ "$#" -eq 3 ] && [ "$1" = "-f" ] && [ "$2" = "localhost_postgres_valve" ] && [ "$3" = "dast_port" ]; then
+if [ "$#" -eq 3 ] && [ "$1" = "-f" ] && [ "$2" = "$endpoint_item" ] && [ "$3" = "dast_port" ]; then
   if [ -n "${ONEPSA_DAST_PORT_VALUE:-}" ]; then
     printf '%s' "${ONEPSA_DAST_PORT_VALUE}"
     exit 0
   fi
   exit 2
 fi
-if [ "$#" -eq 3 ] && [ "$1" = "-f" ] && [ "$2" = "localhost_postgres_valve" ] && [ "$3" = "dast_base_url" ]; then
+if [ "$#" -eq 3 ] && [ "$1" = "-f" ] && [ "$2" = "$endpoint_item" ] && [ "$3" = "dast_base_url" ]; then
   if [ -n "${ONEPSA_DAST_BASE_URL_VALUE:-}" ]; then
     printf '%s' "${ONEPSA_DAST_BASE_URL_VALUE}"
+    exit 0
+  fi
+  exit 2
+fi
+if [ "$#" -eq 3 ] && [ "$1" = "-f" ] && [ "$2" = "$endpoint_item" ] && [ "$3" = "service_host" ]; then
+  if [ -n "${ONEPSA_DAST_SERVICE_HOST_VALUE:-}" ]; then
+    printf '%s' "${ONEPSA_DAST_SERVICE_HOST_VALUE}"
+    exit 0
+  fi
+  exit 2
+fi
+if [ "$#" -eq 3 ] && [ "$1" = "-f" ] && [ "$2" = "$endpoint_item" ] && [ "$3" = "host" ]; then
+  if [ -n "${ONEPSA_DAST_HOST_VALUE:-}" ]; then
+    printf '%s' "${ONEPSA_DAST_HOST_VALUE}"
+    exit 0
+  fi
+  exit 2
+fi
+if [ "$#" -eq 3 ] && [ "$1" = "-f" ] && [ "$2" = "$endpoint_item" ] && [ "$3" = "protocol" ]; then
+  if [ -n "${ONEPSA_DAST_PROTOCOL_VALUE:-}" ]; then
+    printf '%s' "${ONEPSA_DAST_PROTOCOL_VALUE}"
+    exit 0
+  fi
+  exit 2
+fi
+if [ "$#" -eq 3 ] && [ "$1" = "-f" ] && [ "$2" = "$endpoint_item" ] && [ "$3" = "port" ]; then
+  if [ -n "${ONEPSA_DAST_ENDPOINT_PORT_VALUE:-}" ]; then
+    printf '%s' "${ONEPSA_DAST_ENDPOINT_PORT_VALUE}"
+    exit 0
+  fi
+  if [ -n "${ONEPSA_DAST_PORT_VALUE:-}" ]; then
+    printf '%s' "${ONEPSA_DAST_PORT_VALUE}"
     exit 0
   fi
   exit 2
@@ -249,6 +395,17 @@ setup_fixture() {
   create_repo_fixture
   copy_script_to_fixture "06_run_security_checks.sh"
   copy_openapi_to_fixture
+}
+
+# Allocate an ephemeral TCP port the kernel currently considers free.
+# Used by auto-boot tests so the script's real bind preflight does not collide
+# with whatever else happens to be listening on a hard-coded port on the host.
+allocate_free_port() {
+  python3 -c 'import socket
+s = socket.socket()
+s.bind(("127.0.0.1", 0))
+print(s.getsockname()[1])
+s.close()'
 }
 
 setup() {
@@ -458,21 +615,52 @@ EOF
   [ -f "${FIXTURE_ROOT}/.security-reports/dast-summary.json" ]
 }
 
+@test "prints explicit DAST startup marker after SAST completion" {
+  #R060
+  make_semgrep_stub
+  make_shellcheck_stub '[]'
+  make_gitleaks_stub '[]'
+  make_detect_secrets_stub '{"results":{}}'
+  make_gosec_stub '{"Issues":[]}'
+  make_govulncheck_stub '{}'
+  make_curl_stub 0
+  make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
+  run env DAST_AUTO_BOOT=false RUN_SCHEMATHESIS=false PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"✅ Static Application Security Testing (SAST) checks completed."*"▶ Starting Dynamic Application Security Testing (DAST) lane..."* ]]
+}
+
 @test "auto-boots service for DAST when enabled" {
   #R025
   make_go_stub
   make_1psa_stub
   make_curl_stub 0
   make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
-  run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=false ONEPSA_DATABASE_USERNAME_VALUE="from-user" ONEPSA_DATABASE_PW_VALUE="from-pw" ONEPSA_DATABASE_HOST_VALUE="db.example.internal" ONEPSA_DATABASE_PORT_VALUE="6543" GO_STUB_LOG_PATH="${TEST_TMPDIR}/go-stub.log" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+  local boot_port
+  boot_port="$(allocate_free_port)"
+  run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=false ONEPSA_DAST_BASE_URL_VALUE="http://127.0.0.1:${boot_port}" ONEPSA_DATABASE_USERNAME_VALUE="from-user" ONEPSA_DATABASE_PW_VALUE="from-pw" ONEPSA_DATABASE_HOST_VALUE="db.example.internal" ONEPSA_DATABASE_PORT_VALUE="6543" GO_STUB_LOG_PATH="${TEST_TMPDIR}/go-stub.log" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
     bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
   [ "$status" -eq 0 ]
   [ -f "${TEST_TMPDIR}/go-stub.log" ]
   [[ "$(cat "${TEST_TMPDIR}/go-stub.log")" == *"run ./cmd/valve"* ]]
-  [[ "$(cat "${TEST_TMPDIR}/go-stub.log")" == *"VALVE_ADDR=127.0.0.1:8090"* ]]
+  [[ "$(cat "${TEST_TMPDIR}/go-stub.log")" == *"VALVE_ADDR=127.0.0.1:${boot_port}"* ]]
   [[ "$(cat "${TEST_TMPDIR}/go-stub.log")" == *"VALVE_DATABASE_URL=postgres://"* ]]
   [[ "$(cat "${TEST_TMPDIR}/go-stub.log")" == *"@db.example.internal:6543/valve?sslmode=disable"* ]]
   [[ "$(cat "${TEST_TMPDIR}/go-stub.log")" == *"VALVE_UPLOAD_ENDPOINT=http://127.0.0.1:8081/v1/events/batch"* ]]
+}
+
+@test "fails when no DAST endpoint fields are available and DAST_BASE_URL is unset" {
+  #R025
+  make_go_stub
+  make_1psa_stub
+  make_curl_stub 0
+  make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
+  run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=false GO_STUB_LOG_PATH="${TEST_TMPDIR}/go-stub.log" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Unable to resolve DAST endpoint."* ]]
+  [[ "$output" == *"Set DAST_BASE_URL or populate one of these 1psa fields"* ]]
 }
 
 @test "uses 1psa DAST port field for auto-boot bind address when provided" {
@@ -481,11 +669,43 @@ EOF
   make_1psa_stub
   make_curl_stub 0
   make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
-  run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=false ONEPSA_DAST_PORT_VALUE="18080" GO_STUB_LOG_PATH="${TEST_TMPDIR}/go-stub.log" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+  local boot_port
+  boot_port="$(allocate_free_port)"
+  run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=false ONEPSA_DAST_PORT_VALUE="${boot_port}" GO_STUB_LOG_PATH="${TEST_TMPDIR}/go-stub.log" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
     bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
   [ "$status" -eq 0 ]
   [ -f "${TEST_TMPDIR}/go-stub.log" ]
-  [[ "$(cat "${TEST_TMPDIR}/go-stub.log")" == *"VALVE_ADDR=127.0.0.1:18080"* ]]
+  [[ "$(cat "${TEST_TMPDIR}/go-stub.log")" == *"VALVE_ADDR=127.0.0.1:${boot_port}"* ]]
+}
+
+@test "builds DAST base URL from endpoint protocol host and port fields" {
+  #R025
+  make_go_stub
+  make_1psa_stub
+  make_curl_stub 0
+  make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
+  local boot_port
+  boot_port="$(allocate_free_port)"
+  run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=false ONEPSA_DAST_PROTOCOL_VALUE="https" ONEPSA_DAST_HOST_VALUE="localhost" ONEPSA_DAST_ENDPOINT_PORT_VALUE="${boot_port}" GO_STUB_LOG_PATH="${TEST_TMPDIR}/go-stub.log" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+  [ "$status" -eq 0 ]
+  [ -f "${TEST_TMPDIR}/go-stub.log" ]
+  [[ "$(cat "${TEST_TMPDIR}/go-stub.log")" == *"VALVE_ADDR=localhost:${boot_port}"* ]]
+}
+
+@test "defaults database username to valve when 1psa username is absent" {
+  #R025
+  make_go_stub
+  make_1psa_stub
+  make_curl_stub 0
+  make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
+  local boot_port
+  boot_port="$(allocate_free_port)"
+  run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=false ONEPSA_DAST_PORT_VALUE="${boot_port}" ONEPSA_DATABASE_USERNAME_MISSING=true GO_STUB_LOG_PATH="${TEST_TMPDIR}/go-stub.log" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+  [ "$status" -eq 0 ]
+  [ -f "${TEST_TMPDIR}/go-stub.log" ]
+  [[ "$(cat "${TEST_TMPDIR}/go-stub.log")" == *"VALVE_DATABASE_URL=postgres://valve:"* ]]
 }
 
 @test "uses explicit DAST_BASE_URL override for auto-boot bind address" {
@@ -494,11 +714,13 @@ EOF
   make_1psa_stub
   make_curl_stub 0
   make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
-  run env RUN_SAST=false DAST_AUTO_BOOT=true DAST_BASE_URL="http://127.0.0.1:18080" RUN_SCHEMATHESIS=false GO_STUB_LOG_PATH="${TEST_TMPDIR}/go-stub.log" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+  local boot_port
+  boot_port="$(allocate_free_port)"
+  run env RUN_SAST=false DAST_AUTO_BOOT=true DAST_BASE_URL="http://127.0.0.1:${boot_port}" RUN_SCHEMATHESIS=false GO_STUB_LOG_PATH="${TEST_TMPDIR}/go-stub.log" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
     bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
   [ "$status" -eq 0 ]
   [ -f "${TEST_TMPDIR}/go-stub.log" ]
-  [[ "$(cat "${TEST_TMPDIR}/go-stub.log")" == *"VALVE_ADDR=127.0.0.1:18080"* ]]
+  [[ "$(cat "${TEST_TMPDIR}/go-stub.log")" == *"VALVE_ADDR=127.0.0.1:${boot_port}"* ]]
 }
 
 @test "requires 1psa for DAST auto-boot even when VALVE_DATABASE_URL is set" {
@@ -518,10 +740,173 @@ EOF
   make_1psa_stub
   make_curl_stub 0
   make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
-  run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=false PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+  local boot_port
+  boot_port="$(allocate_free_port)"
+  run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=false ONEPSA_DAST_PORT_VALUE="${boot_port}" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
     bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
   [ "$status" -eq 1 ]
   [[ "$output" == *"Auto-booted valve service exited"* ]]
+}
+
+@test "diagnostic auto-boot log dump tolerates NUL bytes without aborting" {
+  #R030
+  make_go_stub_writes_nul_log
+  make_1psa_stub
+  make_curl_stub 0
+  make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
+  local boot_port
+  boot_port="$(allocate_free_port)"
+  run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=false ONEPSA_DAST_PORT_VALUE="${boot_port}" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Auto-booted valve service exited"* ]]
+  [[ "$output" == *"first auto-boot diagnostic line"* ]]
+  [[ "$output" == *"second auto-boot diagnostic line after NUL gap"* ]]
+  [[ "$output" != *"Assertion failed"* ]]
+  [[ "$output" != *"Abort trap"* ]]
+}
+
+@test "fails fast with PID diagnostic when DAST bind address is already in use" {
+  #R030
+  local preflight_port=""
+  preflight_port="$(python3 -c 'import socket
+s = socket.socket()
+s.bind(("127.0.0.1", 0))
+print(s.getsockname()[1])
+s.close()')"
+  python3 -c '
+import socket, sys, time
+port = int(sys.argv[1])
+s = socket.socket()
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(("127.0.0.1", port))
+s.listen(1)
+print("ready", flush=True)
+time.sleep(30)
+' "${preflight_port}" >"${TEST_TMPDIR}/preflight-listener.log" 2>&1 &
+  local listener_pid=$!
+  local waited=0
+  while (( waited < 20 )); do
+    if grep -q '^ready$' "${TEST_TMPDIR}/preflight-listener.log" 2>/dev/null; then
+      break
+    fi
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  make_go_stub
+  make_1psa_stub
+  make_curl_stub 0
+  make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
+  run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=false \
+    DAST_BASE_URL="http://127.0.0.1:${preflight_port}" \
+    GO_STUB_LOG_PATH="${TEST_TMPDIR}/go-stub.log" \
+    PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+  kill "${listener_pid}" 2>/dev/null || true
+  wait "${listener_pid}" 2>/dev/null || true
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"DAST bind address already in use: 127.0.0.1:${preflight_port}"* ]]
+  [[ "$output" == *"Listener currently holding the port:"* ]]
+  [[ "$output" == *"Free the port"* ]]
+  [ ! -f "${TEST_TMPDIR}/go-stub.log" ]
+}
+
+@test "readiness probe suppresses transient curl noise but dumps it on real failure" {
+  #R030
+  # Use a 30s-lived auto-boot stub so the post-readiness "still alive" recheck
+  # cannot race the stub's exit while we are also exercising probe retries.
+  make_go_stub 30
+  make_1psa_stub
+  # Fail the first probe (mimicking the "service still warming up" interval)
+  # and succeed on the second.
+  make_curl_stub_fail_then_succeed 1
+  make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
+  local boot_port
+  boot_port="$(allocate_free_port)"
+  run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=false ONEPSA_DAST_PORT_VALUE="${boot_port}" GO_STUB_LOG_PATH="${TEST_TMPDIR}/go-stub.log" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+  [ "$status" -eq 0 ]
+  # Transient "connection refused" lines must NOT bleed onto the terminal once
+  # the probe ultimately succeeds; they belong in the captured health log.
+  [[ "$output" != *"curl: (7) Failed to connect"* ]]
+  [ -f "${FIXTURE_ROOT}/.security-reports/dast-health.log" ]
+  # On final success, dast-health.log captures the last (successful) probe.
+  [[ "$(cat "${FIXTURE_ROOT}/.security-reports/dast-health.log")" == *"ok"* ]]
+}
+
+@test "readiness probe failure dumps captured health log for diagnostics" {
+  #R030
+  make_curl_stub 1
+  make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
+  run env RUN_SAST=false RUN_DAST=true DAST_AUTO_BOOT=false RUN_SCHEMATHESIS=false PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"DAST health probe failed:"* ]]
+  [[ "$output" == *"Last health probe output:"* ]]
+}
+
+@test "auto-boot cleanup reaps spawned child binary via process-group teardown" {
+  #R030
+  make_go_stub_with_lingering_child
+  make_1psa_stub
+  make_curl_stub 0
+  make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
+  local boot_port
+  boot_port="$(allocate_free_port)"
+  run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=false ONEPSA_DAST_PORT_VALUE="${boot_port}" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+  [ "$status" -eq 0 ]
+  [ -f "${TEST_TMPDIR}/lingering-child.pid" ]
+  local child_pid=""
+  child_pid="$(cat "${TEST_TMPDIR}/lingering-child.pid")"
+  [ -n "${child_pid}" ]
+  local waited=0
+  # Allow a brief grace window for SIGTERM propagation through the process group.
+  while (( waited < 20 )) && kill -0 "${child_pid}" 2>/dev/null; do
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  ! kill -0 "${child_pid}" 2>/dev/null
+}
+
+@test "defaults ZAP entry URL to /healthz when DAST_ZAP_TARGET_URL is unset" {
+  #R035
+  make_curl_stub 0
+  make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
+  run env RUN_SAST=false DAST_AUTO_BOOT=false RUN_SCHEMATHESIS=false \
+    ZAP_BASELINE_STUB_TARGET_LOG="${TEST_TMPDIR}/zap-target.log" \
+    PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+  [ "$status" -eq 0 ]
+  [ -f "${TEST_TMPDIR}/zap-target.log" ]
+  [[ "$(cat "${TEST_TMPDIR}/zap-target.log")" == *"/healthz"* ]]
+}
+
+@test "explicit DAST_ZAP_TARGET_URL overrides the /healthz default" {
+  #R035
+  make_curl_stub 0
+  make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
+  run env RUN_SAST=false DAST_AUTO_BOOT=false RUN_SCHEMATHESIS=false \
+    DAST_ZAP_TARGET_URL="http://127.0.0.1:8080/v1/valve/credentials" \
+    ZAP_BASELINE_STUB_TARGET_LOG="${TEST_TMPDIR}/zap-target.log" \
+    PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+  [ "$status" -eq 0 ]
+  [ -f "${TEST_TMPDIR}/zap-target.log" ]
+  [[ "$(cat "${TEST_TMPDIR}/zap-target.log")" == "http://127.0.0.1:8080/v1/valve/credentials" ]]
+}
+
+@test "fails fast when ZAP cannot scan the entry URL (404 response)" {
+  #R035
+  make_curl_stub 0
+  make_zap_baseline_stub_404_entry
+  run env RUN_SAST=false DAST_AUTO_BOOT=false RUN_SCHEMATHESIS=false PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"OWASP ZAP could not scan"* ]]
+  [[ "$output" == *"entry URL did not return 2xx"* ]]
+  [[ "$output" == *"Failed to attack the URL"* ]]
+  [[ "$output" == *"Set DAST_ZAP_TARGET_URL"* ]]
 }
 
 @test "runs Schemathesis and writes junit artifact" {
@@ -534,6 +919,56 @@ EOF
   [ "$status" -eq 0 ]
   [ -f "${FIXTURE_ROOT}/.security-reports/schemathesis.log" ]
   [ -f "${FIXTURE_ROOT}/.security-reports/schemathesis-junit.xml" ]
+}
+
+@test "auto-boot mints ephemeral service auth key and forwards it to Schemathesis" {
+  #R040
+  make_go_stub
+  make_1psa_stub
+  make_curl_stub 0
+  make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
+  make_schemathesis_stub 0
+  local boot_port
+  boot_port="$(allocate_free_port)"
+  run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=true \
+    ONEPSA_DAST_PORT_VALUE="${boot_port}" \
+    GO_STUB_LOG_PATH="${TEST_TMPDIR}/go-stub.log" \
+    SCHEMATHESIS_STUB_HEADERS_LOG_PATH="${TEST_TMPDIR}/schemathesis-headers.log" \
+    PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+  [ "$status" -eq 0 ]
+  [ -f "${TEST_TMPDIR}/go-stub.log" ]
+  [ -f "${TEST_TMPDIR}/schemathesis-headers.log" ]
+  local auto_key=""
+  auto_key="$(grep '^VALVE_SERVICE_AUTH_KEY=' "${TEST_TMPDIR}/go-stub.log" | sed 's/^VALVE_SERVICE_AUTH_KEY=//')"
+  # Ephemeral key must be non-empty AND must appear on the X-Valve-Service-Key
+  # header forwarded to schemathesis (proving both sides see the same value).
+  [ -n "${auto_key}" ]
+  [[ "$(cat "${TEST_TMPDIR}/schemathesis-headers.log")" == *"X-Valve-Service-Key: ${auto_key}"* ]]
+}
+
+@test "auto-boot reuses operator-provided VALVE_SERVICE_AUTH_KEY verbatim" {
+  #R040
+  make_go_stub
+  make_1psa_stub
+  make_curl_stub 0
+  make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
+  make_schemathesis_stub 0
+  local boot_port
+  boot_port="$(allocate_free_port)"
+  # Build the test value from non-keyword fragments so detect-secrets does not
+  # flag the assertion lines below as a real "Secret Keyword" finding.
+  local operator_key="operator${RANDOM}-test-fixture-value-xyz"
+  run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=true \
+    ONEPSA_DAST_PORT_VALUE="${boot_port}" \
+    VALVE_SERVICE_AUTH_KEY="${operator_key}" \
+    GO_STUB_LOG_PATH="${TEST_TMPDIR}/go-stub.log" \
+    SCHEMATHESIS_STUB_HEADERS_LOG_PATH="${TEST_TMPDIR}/schemathesis-headers.log" \
+    PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+  [ "$status" -eq 0 ]
+  [[ "$(cat "${TEST_TMPDIR}/go-stub.log")" == *"VALVE_SERVICE_AUTH_KEY=${operator_key}"* ]]
+  [[ "$(cat "${TEST_TMPDIR}/schemathesis-headers.log")" == *"X-Valve-Service-Key: ${operator_key}"* ]]
 }
 
 @test "fails DAST gate when Schemathesis reports contract failures" {
