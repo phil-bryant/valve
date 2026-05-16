@@ -35,6 +35,13 @@ Tests:
 - R020-T02: Simulate gremlins JSON with `test_efficacy` at or above threshold and verify pass.
 - R020-T03: Verify custom `MUTATION_SCORE_THRESHOLD` environment variable overrides the default.
 
+R022  Statement: Gate on a configurable minimum mutator coverage threshold.
+Design: Read `mutations_coverage` from the gremlins JSON output. Compare against `MUTATOR_COVERAGE_THRESHOLD` (default `70`). Fail when the coverage is below the threshold, even if `test_efficacy` is above its threshold. This prevents low-signal runs (many `TIMED OUT` or `NOT COVERED` mutants resolving to a tiny pool of meaningful verdicts) from masquerading as a passing gate. Emit a dedicated `❌ FAIL: Mutator coverage ...` line in addition to (or instead of) the score line.
+Tests:
+- R022-T01: Simulate gremlins JSON with `mutations_coverage` below threshold (and `test_efficacy` above) and verify explicit non-zero failure citing mutator coverage.
+- R022-T02: Simulate gremlins JSON with `mutations_coverage` at or above threshold and verify pass.
+- R022-T03: Verify custom `MUTATOR_COVERAGE_THRESHOLD` environment variable overrides the default.
+
 R025  Statement: Support file-level exclusions for infrastructure-only code.
 Design: Accept `MUTATION_EXCLUDE_FILES` as a comma-separated list of file-path regexes to skip. Pass each as `--exclude-files <regex>` to gremlins.
 Tests:
@@ -42,10 +49,10 @@ Tests:
 - R025-T02: Verify default (empty) exclusion list passes no `--exclude-files` flags.
 
 R030  Statement: Persist machine-readable mutation testing report.
-Design: Write a normalized summary to `${REPORT_DIR}/mutation-summary.json` derived from the gremlins JSON, containing at minimum: total mutants, killed mutants, lived mutants, not-covered mutants, not-viable mutants, timed-out mutants, score (test efficacy), mutator coverage, threshold, excluded files, and gate pass/fail status.
+Design: Write a normalized summary to `${REPORT_DIR}/mutation-summary.json` derived from the gremlins JSON, containing at minimum: total mutants, killed mutants, lived mutants, not-covered mutants, not-viable mutants, timed-out mutants, score (test efficacy), mutator coverage, score threshold, coverage threshold, excluded files, per-gate pass/fail flags (`score_failed`, `coverage_failed`), and the overall `gate_failed` status.
 Tests:
 - R030-T01: Verify `${REPORT_DIR}/mutation-summary.json` is written after a successful run.
-- R030-T02: Verify the JSON contains required fields: `total`, `killed`, `lived`, `not_covered`, `not_viable`, `timed_out`, `score`, `mutator_coverage`, `threshold`, `excluded_files`, `gate_failed`.
+- R030-T02: Verify the JSON contains required fields: `total`, `killed`, `lived`, `not_covered`, `not_viable`, `timed_out`, `score`, `mutator_coverage`, `threshold`, `coverage_threshold`, `excluded_files`, `score_failed`, `coverage_failed`, `gate_failed`.
 
 R035  Statement: Emit concise operator-readable pass or fail output.
 Design: Print one `✅ PASS:` line with the mutation score when the gate passes. Print one `❌ FAIL:` line with the score and threshold when the gate fails.
@@ -63,3 +70,4 @@ Tests:
 
 - 2026-05-16: Initial requirements for mutation testing gate (step-06).
 - 2026-05-16: Fix gremlins invocation (drop `./...`, invoke from module root). Switch to gremlins JSON via `-o` and gate on `test_efficacy`. Treat missing JSON as a hard failure instead of `0.0%`. Rename `MUTATION_EXCLUDE_PACKAGES` to `MUTATION_EXCLUDE_FILES` and map to `--exclude-files <regex>`. Expand the persisted summary fields (`lived`, `not_viable`, `mutator_coverage`, `excluded_files`).
+- 2026-05-16: Add R022 mutator-coverage gate (`MUTATOR_COVERAGE_THRESHOLD`, default `70`) so that low-signal runs (e.g. mostly `TIMED OUT` or `NOT COVERED`) cannot pass on the strength of a tiny number of fast verdicts. Summary now records `coverage_threshold`, `score_failed`, and `coverage_failed`.

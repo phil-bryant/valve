@@ -31,12 +31,12 @@ make_gremlins_stub() {
   local not_covered="${4:-3}"
   local not_viable="${5:-0}"
   local timed_out="${6:-0}"
+  local mcoverage="${7:-100.00}"
   local total=$((killed + lived))
   local efficacy="100.00"
   if [ "$total" -gt 0 ]; then
     efficacy="$(python3 -c "print(f'{100.0 * ${killed} / ${total}:.2f}')")"
   fi
-  local mcoverage="100.00"
   cat > "${STUB_BIN}/gremlins" <<EOF
 #!/usr/bin/env bash
 echo "gremlins \$*" >> "${CALLS_LOG}"
@@ -304,14 +304,14 @@ EOF
 }
 
 @test "mutation summary contains required fields" {
-  #R030-T02: Verify the JSON contains required fields: total, killed, lived, not_covered, not_viable, timed_out, score, mutator_coverage, threshold, excluded_files, gate_failed.
+  #R030-T02: Verify the JSON contains required fields: total, killed, lived, not_covered, not_viable, timed_out, score, mutator_coverage, threshold, coverage_threshold, excluded_files, score_failed, coverage_failed, gate_failed.
   #R030
   run bash "${FIXTURE_ROOT}/06_run_mutation_tests.sh"
   [ "$status" -eq 0 ]
   run python3 -c '
 import json, sys
 data = json.load(open(sys.argv[1]))
-required = ["total", "killed", "lived", "not_covered", "not_viable", "timed_out", "score", "mutator_coverage", "threshold", "excluded_files", "gate_failed"]
+required = ["total", "killed", "lived", "not_covered", "not_viable", "timed_out", "score", "mutator_coverage", "threshold", "coverage_threshold", "excluded_files", "score_failed", "coverage_failed", "gate_failed"]
 missing = [k for k in required if k not in data]
 if missing:
     print(f"Missing fields: {missing}")
@@ -320,6 +320,34 @@ print("All required fields present")
 ' "${FIXTURE_ROOT}/.security-reports/mutation-summary.json"
   [ "$status" -eq 0 ]
   [[ "$output" == *"All required fields present"* ]]
+}
+
+@test "fails when mutator coverage is below threshold" {
+  #R022-T01: Simulate gremlins JSON with mutations_coverage below threshold (and test_efficacy above) and verify explicit non-zero failure citing mutator coverage.
+  #R022
+  make_gremlins_stub 0 1 0 119 0 0 "3.03"
+  run bash "${FIXTURE_ROOT}/06_run_mutation_tests.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"FAIL: Mutator coverage"* ]]
+  [[ "$output" == *"below threshold"* ]]
+}
+
+@test "passes when mutator coverage meets threshold" {
+  #R022-T02: Simulate gremlins JSON with mutations_coverage at or above threshold and verify pass.
+  #R022
+  make_gremlins_stub 0 85 15 0 0 0 "100.00"
+  run bash "${FIXTURE_ROOT}/06_run_mutation_tests.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"PASS: Mutation score"* ]]
+}
+
+@test "respects custom MUTATOR_COVERAGE_THRESHOLD" {
+  #R022-T03: Verify custom MUTATOR_COVERAGE_THRESHOLD environment variable overrides the default.
+  #R022
+  make_gremlins_stub 0 1 0 119 0 0 "3.03"
+  run env MUTATOR_COVERAGE_THRESHOLD=1 bash "${FIXTURE_ROOT}/06_run_mutation_tests.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"PASS: Mutation score"* ]]
 }
 
 @test "emits pass line with score on success" {
