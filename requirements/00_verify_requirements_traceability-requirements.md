@@ -108,16 +108,18 @@ Tests:
 - R085-T01: Add an unreferenced software file to a fixture repo and verify explicit full-run failure output naming the uncovered file.
 - R085-T02: Add that file to a requirements Scope mapping and verify full-run coverage pass output.
 
-R090  Statement: Enforce numbered test tags (`#Rxxx-T##`) in discovered test files for every requirement ID in enforceable documents.
-Design: For each requirement ID in a requirements doc that has source mappings, scan discovered test files for at least one tag matching `#R<id>-T<nn>` (e.g. `#R020-T01`). Fail when any requirement ID has no such numbered tag. This check runs alongside the existing `#R` coverage check (R060) and is skipped for requirements-only docs.
+R090  Statement: Enforce 1:1 numbered test-tag traceability (`Rxxx-T##` in requirements vs `#Rxxx-T##` in tests) for enforceable documents.
+Design: Parse numbered test bullets under each requirements `Tests:` section and compare them as an exact set against discovered `#Rxxx-T##` tags in discovered tests, scoped to requirement IDs in that document. Fail when any numbered requirement test ID is missing in tests and when any numbered test tag exists in tests without a corresponding requirements numbered bullet. Also fail when `Tests:` bullets are malformed (for example, unnumbered bullets that should be `Rxxx-T##:`). This check runs alongside the existing `#R` coverage check (R060) and is skipped for requirements-only docs.
 Tests:
-- R090-T01: Provide a test file with `#R001` but no `#R001-T01` and verify explicit numbered-tag failure output.
-- R090-T02: Add `#R001-T01` to the test file and verify the check passes.
-- R090-T03: Verify that a requirements-only doc skips the numbered-tag check.
+- R090-T01: Provide a requirements numbered test ID with no matching `#Rxxx-T##` in tests and verify explicit "missing in tests" failure output.
+- R090-T02: Provide a `#Rxxx-T##` in tests with no matching requirements numbered test bullet and verify explicit "missing in requirements" failure output.
+- R090-T03: Provide both mismatch directions in one fixture and verify both failure sections are printed.
+- R090-T04: Provide malformed `Tests:` bullets (missing `Rxxx-T##:` prefix) and verify explicit malformed-bullet failure output.
+- R090-T05: Verify that a requirements-only doc skips the numbered-tag check.
 
 ## Changelog
 
-- 2026-05-16: Added R090 for numbered test tag enforcement (`#Rxxx-T##`).
+- 2026-05-16: Strengthened R090 to require 1:1 numbered traceability between requirements `Rxxx-T##` bullets and discovered test `#Rxxx-T##` tags, including malformed-bullet rejection.
 
 - 2026-05-09: Added Go package test discovery requirement for per-file Go traceability docs.
 - 2026-05-10: Added repository-level auto-detection for software files that are missing requirements coverage.

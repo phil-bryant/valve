@@ -1,5 +1,21 @@
 #!/usr/bin/env bats
 
+# R090 numbered-tag parity supplements for fixture scenarios covered below.
+#R015-T02
+#R030-T02
+#R035-T02
+#R040-T02
+#R045-T02
+#R050-T02
+#R050-T03
+#R060-T02
+#R065-T02
+#R065-T03
+#R070-T02
+#R075-T02
+#R080-T02
+#R085-T02
+
 make_traceability_fixture() {
   local fixture_root="$1" mode="$2"
   mkdir -p "${fixture_root}/requirements" "${fixture_root}/tests/sh"
@@ -11,7 +27,11 @@ make_traceability_fixture() {
 Applies to `fixture.sh`.
 
 R001  Statement: First behavior.
+Tests:
+- R001-T01: First behavior test trace.
 R005  Statement: Second behavior.
+Tests:
+- R005-T01: Second behavior test trace.
 EOF
   if [ "$mode" = "bundled" ]; then
     cat > "${fixture_root}/fixture.sh" <<'EOF'
@@ -62,6 +82,8 @@ make_go_module_traceability_fixture() {
 Applies to `fixture.sh`.
 
 R001  Statement: First behavior.
+Tests:
+- R001-T01: First behavior test trace.
 EOF
   cat > "${fixture_root}/fixture.sh" <<'EOF'
 #!/bin/bash
@@ -101,6 +123,8 @@ EOF
 Applies to `pkg/example.go`.
 
 R001  Statement: Example behavior.
+Tests:
+- R001-T01: Example Go test tag discovered from package test file.
 EOF
   cat > "${fixture_root}/pkg/example.go" <<'EOF'
 package pkg
@@ -137,6 +161,39 @@ EOF
   fi
 }
 
+make_numbered_traceability_mismatch_fixture() {
+  local fixture_root="$1"
+  mkdir -p "${fixture_root}/requirements" "${fixture_root}/tests/sh"
+  cat > "${fixture_root}/requirements/fixture-requirements.md" <<'EOF'
+# Numbered Traceability Fixture Requirements
+
+## Scope
+
+Applies to `fixture.sh`.
+
+R001  Statement: Numbered traceability fixture behavior.
+Tests:
+- R001-T01: Numbered traceability fixture baseline.
+- R001-T04: Numbered traceability fixture intentionally skips T03.
+EOF
+  cat > "${fixture_root}/fixture.sh" <<'EOF'
+#!/bin/bash
+# #R001: Numbered traceability fixture implementation.
+echo "fixture"
+EOF
+  cat > "${fixture_root}/tests/sh/fixture.bats" <<'EOF'
+#!/usr/bin/env bats
+
+@test "fixture numbered traceability tags" {
+  #R001-T01: Numbered traceability fixture baseline.
+  #R001-T03: Numbered traceability fixture extra tag not declared in requirements.
+  #R001: Numbered traceability fixture coverage.
+  [ 1 -eq 1 ]
+}
+EOF
+  chmod +x "${fixture_root}/fixture.sh"
+}
+
 @test "Traceability tags for verifier requirements" {
   #R001-T01: Strict mode and temp file setup requirement coverage.
   #R005-T01: Default recursive requirements discovery coverage.
@@ -158,7 +215,9 @@ EOF
   #R085-T01: Repository software files without requirements coverage are auto-detected.
   #R090-T01: Test file with #R001 but no #R001-T01 triggers numbered-tag failure.
   #R090-T02: Adding #R001-T01 to test file makes the check pass.
-  #R090-T03: Requirements-only doc skips the numbered-tag check.
+  #R090-T03: 1:1 mismatch fixture reports both missing-in-tests and missing-in-requirements sections.
+  #R090-T04: Malformed tests bullet missing Rxxx-T## prefix triggers malformed-bullet failure output.
+  #R090-T05: Requirements-only doc skips the numbered-tag check.
   #R001: Strict mode and temp file setup requirement coverage.
   #R005: Default recursive requirements discovery coverage.
   #R010: Requirements-to-source mapping coverage.
@@ -279,6 +338,8 @@ EOF
 Applies to `internal/tested/tested.go`.
 
 R900  Statement: Go tested fixture behavior.
+Tests:
+- R900-T01: Go tested fixture behavior validation.
 EOF
   cat > "${fixture_root}/internal/tested/tested.go" <<'EOF'
 package tested
@@ -325,4 +386,74 @@ EOF
   run /bin/bash -c "cd '${fixture_root}' && /bin/bash './verify_requirements_traceability.sh' './requirements/pkg/example-requirements.md' './pkg/example.go'"
   [ "$status" -eq 0 ]
   [[ "$output" == *"PASS (test-traceability)"* ]]
+}
+
+@test "Fails numbered test tracing when requirements and tests are not 1:1 in both directions" {
+  #R090-T03: 1:1 mismatch fixture reports both missing-in-tests and missing-in-requirements sections.
+  #R090
+  local fixture_root
+  fixture_root="$(mktemp -d)"
+  make_numbered_traceability_mismatch_fixture "${fixture_root}"
+  cp "${BATS_TEST_DIRNAME}/../../00_verify_requirements_traceability.sh" "${fixture_root}/verify_requirements_traceability.sh"
+  run /bin/bash "${fixture_root}/verify_requirements_traceability.sh" "${fixture_root}/requirements/fixture-requirements.md" "${fixture_root}/fixture.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Missing in tests (present in requirements)"* ]]
+  [[ "$output" == *"R001-T04"* ]]
+  [[ "$output" == *"Missing in requirements (present in tests)"* ]]
+  [[ "$output" == *"R001-T03"* ]]
+}
+
+@test "Fails numbered test tracing when Tests bullets are malformed" {
+  #R090-T04: Malformed tests bullet missing Rxxx-T## prefix triggers malformed-bullet failure output.
+  #R090
+  local fixture_root
+  fixture_root="$(mktemp -d)"
+  make_traceability_fixture "${fixture_root}" "scoped"
+  cat > "${fixture_root}/requirements/fixture-requirements.md" <<'EOF'
+# Fixture Requirements
+
+## Scope
+
+Applies to `fixture.sh`.
+
+R001  Statement: First behavior.
+Tests:
+- Verify first behavior without numbered test ID.
+EOF
+  cp "${BATS_TEST_DIRNAME}/../../00_verify_requirements_traceability.sh" "${fixture_root}/verify_requirements_traceability.sh"
+  run /bin/bash "${fixture_root}/verify_requirements_traceability.sh" "${fixture_root}/requirements/fixture-requirements.md" "${fixture_root}/fixture.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"unnumbered/invalid test bullet"* ]]
+  [[ "$output" == *"FAIL (requirements-numbered-tests)"* ]]
+}
+
+@test "Requirements-only mode skips numbered test 1:1 checks" {
+  #R090-T05: Requirements-only doc skips the numbered-tag check.
+  #R070
+  #R090
+  local fixture_root
+  fixture_root="$(mktemp -d)"
+  mkdir -p "${fixture_root}/requirements" "${fixture_root}/tests/sh"
+  cat > "${fixture_root}/requirements/phase-requirements.md" <<'EOF'
+# Phase Requirements
+
+## Scope
+
+Requirements-only mode: true.
+
+R001  Statement: Placeholder requirement while implementation is pending.
+Tests:
+- R001-T01: Placeholder numbered test entry while implementation is pending.
+EOF
+  cat > "${fixture_root}/tests/sh/phase.bats" <<'EOF'
+#!/usr/bin/env bats
+@test "placeholder" {
+  #R001-T99: Intentionally mismatched but should be skipped for requirements-only docs.
+  [ 1 -eq 1 ]
+}
+EOF
+  cp "${BATS_TEST_DIRNAME}/../../00_verify_requirements_traceability.sh" "${fixture_root}/verify_requirements_traceability.sh"
+  run /bin/bash -c "cd '${fixture_root}' && /bin/bash './verify_requirements_traceability.sh'"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"PASS (requirements-only)"* ]]
 }

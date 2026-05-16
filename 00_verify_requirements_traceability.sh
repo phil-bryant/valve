@@ -355,32 +355,145 @@ collect_numbered_test_ids_from_list() {
     sort -u "$tmp_ids" > "$out_file"
 }
 
+extract_numbered_requirement_test_ids() {
+    local requirements_file="$1" out_file="$2"
+    python3 - "$requirements_file" "$out_file" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+requirements_file = Path(sys.argv[1])
+out_file = Path(sys.argv[2])
+
+req_line_re = re.compile(r'^(R\d{3}(?:-\d{3})*)\s+Statement:')
+numbered_test_re = re.compile(r'^-\s+(R\d{3}(?:-\d{3})*)-T(\d{2})\s*:')
+
+current_requirement_id = None
+in_tests = False
+ids = set()
+
+for raw_line in requirements_file.read_text(encoding="utf-8").splitlines():
+    stripped = raw_line.strip()
+    req_match = req_line_re.match(stripped)
+    if req_match:
+        current_requirement_id = req_match.group(1)
+        in_tests = False
+        continue
+    if stripped == "Tests:":
+        in_tests = True
+        continue
+    if in_tests and stripped.startswith("- "):
+        match = numbered_test_re.match(stripped)
+        if match and current_requirement_id and match.group(1) == current_requirement_id:
+            ids.add(f"{match.group(1)}-T{match.group(2)}")
+        continue
+    if in_tests and stripped and not stripped.startswith("- "):
+        in_tests = False
+
+with out_file.open("w", encoding="utf-8") as handle:
+    for item in sorted(ids):
+        handle.write(f"{item}\n")
+PY
+}
+
+verify_requirements_numbered_test_bullets() {
+    local requirements_file="$1"
+    python3 - "$requirements_file" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+requirements_file = Path(sys.argv[1])
+lines = requirements_file.read_text(encoding="utf-8").splitlines()
+
+req_line_re = re.compile(r'^(R\d{3}(?:-\d{3})*)\s+Statement:')
+numbered_test_re = re.compile(r'^-\s+(R\d{3}(?:-\d{3})*)-T(\d{2})\s*:')
+
+current_requirement_id = None
+in_tests = False
+seen_numbers = {}
+issues = []
+
+for idx, raw_line in enumerate(lines, start=1):
+    stripped = raw_line.strip()
+    req_match = req_line_re.match(stripped)
+    if req_match:
+        current_requirement_id = req_match.group(1)
+        in_tests = False
+        seen_numbers.setdefault(current_requirement_id, [])
+        continue
+    if stripped == "Tests:":
+        in_tests = True
+        continue
+    if in_tests and stripped.startswith("- "):
+        match = numbered_test_re.match(stripped)
+        if not match:
+            expected = ""
+            if current_requirement_id:
+                next_number = len(seen_numbers.get(current_requirement_id, [])) + 1
+                expected = f" (expected prefix: {current_requirement_id}-T{next_number:02d})"
+            issues.append(f"{requirements_file}:{idx}: unnumbered/invalid test bullet under Tests:{expected}")
+            continue
+        bullet_requirement_id = match.group(1)
+        bullet_test_number = int(match.group(2))
+        if current_requirement_id and bullet_requirement_id != current_requirement_id:
+            issues.append(
+                f"{requirements_file}:{idx}: test bullet {bullet_requirement_id}-T{bullet_test_number:02d} does not match requirement {current_requirement_id}"
+            )
+            continue
+        if current_requirement_id:
+            seen_numbers[current_requirement_id].append(bullet_test_number)
+        continue
+    if in_tests and stripped and not stripped.startswith("- "):
+        in_tests = False
+
+if issues:
+    for issue in issues:
+        print(issue)
+    raise SystemExit(1)
+PY
+}
+
 #R090: Enforce numbered test tags (#Rxxx-T##) in discovered test files for each requirement ID.
 verify_numbered_test_traceability() {
     local requirements_file="$1" source_list_file="$2"
-    local req_ids_file combined_tests_file numbered_test_ids_file missing_file
+    local req_ids_file req_numbered_test_ids_file combined_tests_file numbered_test_ids_file scoped_test_ids_file missing_file extra_file
     req_ids_file="$(mktemp)"
+    req_numbered_test_ids_file="$(mktemp)"
     combined_tests_file="$(mktemp)"
     numbered_test_ids_file="$(mktemp)"
+    scoped_test_ids_file="$(mktemp)"
     missing_file="$(mktemp)"
+    extra_file="$(mktemp)"
     extract_requirement_ids "$requirements_file" "$req_ids_file"
+    extract_numbered_requirement_test_ids "$requirements_file" "$req_numbered_test_ids_file"
     discover_combined_tests_for_requirements "$requirements_file" "$source_list_file" "$combined_tests_file"
     collect_numbered_test_ids_from_list "$combined_tests_file" "$numbered_test_ids_file"
-    : > "$missing_file"
-    while IFS= read -r req_id; do
-        [ -n "$req_id" ] || continue
-        if awk -v id="$req_id" 'index($0, id "-T") == 1 { found=1 } END { exit found ? 0 : 1 }' "$numbered_test_ids_file"; then
-            continue
-        fi
-        printf "%s\n" "$req_id" >> "$missing_file"
-    done < "$req_ids_file"
-    sort -u "$missing_file" -o "$missing_file"
-    if [ ! -s "$missing_file" ]; then
+    awk '
+        NR == FNR { req[$1] = 1; next }
+        {
+            split($0, parts, "-T")
+            req_id = parts[1]
+            if (req_id in req) {
+                print $0
+            }
+        }
+    ' "$req_ids_file" "$numbered_test_ids_file" | sort -u > "$scoped_test_ids_file"
+    comm -23 "$req_numbered_test_ids_file" "$scoped_test_ids_file" > "$missing_file"
+    comm -13 "$req_numbered_test_ids_file" "$scoped_test_ids_file" > "$extra_file"
+    if [ ! -s "$missing_file" ] && [ ! -s "$extra_file" ]; then
         echo "✅ PASS (numbered-test-tags): ${requirements_file}"
         return 0
     fi
-    echo "❌ FAIL (numbered-test-tags): missing #Rxxx-T## tags in test files for requirement IDs in ${requirements_file}:"
-    sed 's/^/  - /' "$missing_file"
+    echo "❌ FAIL (numbered-test-tags): requirements/tests #Rxxx-T## are not 1:1 for ${requirements_file}:"
+    if [ -s "$missing_file" ]; then
+        echo "  Missing in tests (present in requirements):"
+        sed 's/^/    - /' "$missing_file"
+    fi
+    if [ -s "$extra_file" ]; then
+        echo "  Missing in requirements (present in tests):"
+        sed 's/^/    - /' "$extra_file"
+    fi
     return 1
 }
 
@@ -579,6 +692,10 @@ verify_single_pair_with_tests() {
     if ! verify_requirements_test_traceability "$requirements_file" "$source_list_file"; then
         status=1
     fi
+    if ! verify_requirements_numbered_test_bullets "$requirements_file"; then
+        echo "❌ FAIL (requirements-numbered-tests): ${requirements_file} contains malformed test bullets."
+        status=1
+    fi
     #R090: Enforce numbered test tags for each requirement ID.
     if ! verify_numbered_test_traceability "$requirements_file" "$source_list_file"; then
         status=1
@@ -634,6 +751,10 @@ verify_requirements_file_sources() {
         fi
     done < "$source_list_file"
     if ! verify_requirements_test_traceability "$requirements_file" "$source_list_file"; then
+        file_fail=1
+    fi
+    if ! verify_requirements_numbered_test_bullets "$requirements_file"; then
+        echo "❌ FAIL (requirements-numbered-tests): ${requirements_file} contains malformed test bullets."
         file_fail=1
     fi
     #R090: Enforce numbered test tags for each requirement ID.
