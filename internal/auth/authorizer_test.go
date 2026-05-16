@@ -6,6 +6,10 @@ import (
 )
 
 func TestDevAuthorizerProvisionReflectsAllowAll(t *testing.T) {
+	// #R001-T01: DevAuthorizer{AllowAll: true} satisfies Authorizer interface.
+	// #R001-T02: DevAuthorizer{AllowAll: false}.CanProvisionIngestCredential returns (false, nil).
+	// #R005-T01: DevAuthorizer{AllowAll: true}.CanRevokeIngestCredential returns (true, nil).
+	// #R005-T02: DevAuthorizer{AllowAll: false}.CanRevokeIngestCredential returns (false, nil).
 	// #R001: Provision authorization contract is exercised through allow/deny outcomes.
 	// #R005: Revoke authorization contract semantics are covered in package tests.
 	allow, err := DevAuthorizer{AllowAll: true}.CanProvisionIngestCredential(context.Background(), "actor", "tenant")

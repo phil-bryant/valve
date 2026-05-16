@@ -39,7 +39,11 @@ private final class URLProtocolStub: URLProtocol, @unchecked Sendable
 struct ValveAPIClientTests
 { @Test
   func listCredentialsDecodesResponse() async throws
-  { let config = URLSessionConfiguration.ephemeral
+  { // #R001-T01: ValveAPIClient conforms to ValveAPIClientProtocol.
+    // #R001-T02: Register call against mock server returns decoded response.
+    // #R001: Protocol-based API client contract for all credential lifecycle operations.
+    // #R005-T02: 200 response with valid JSON decodes successfully.
+    let config = URLSessionConfiguration.ephemeral
     config.protocolClasses = [URLProtocolStub.self]
     let session = URLSession(configuration: config)
     let env = ValveEnvironment(
@@ -66,7 +70,9 @@ struct ValveAPIClientTests
 
   @Test
   func listCredentialsMapsServerErrorEnvelope() async throws
-  { let config = URLSessionConfiguration.ephemeral
+  { // #R005-T01: 403 response throws APIError.requestFailed with status 403.
+    // #R005: Map non-2xx HTTP responses to structured APIError.requestFailed.
+    let config = URLSessionConfiguration.ephemeral
     config.protocolClasses = [URLProtocolStub.self]
     let session = URLSession(configuration: config)
     let env = ValveEnvironment(

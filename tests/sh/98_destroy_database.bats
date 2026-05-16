@@ -13,6 +13,8 @@ teardown() {
 }
 
 @test "fails clearly when 1psa is missing" {
+  #R001-T01: Force a failing SQL command verifies non-zero exit.
+  #R005-T01: Run without 1psa verifies clear failure message.
   #R001 #R005
   run bash "${FIXTURE_ROOT}/98_destroy_database.sh"
   [ "$status" -eq 1 ]
@@ -20,6 +22,7 @@ teardown() {
 }
 
 @test "wrong confirmation cancels before teardown commands" {
+  #R010-T01: Provide wrong confirmation verifies teardown does not run.
   #R010
   cat > "${STUB_BIN}/1psa" <<'EOF'
 #!/usr/bin/env bash
@@ -53,6 +56,9 @@ EOF
 }
 
 @test "successful confirmation runs cleanup and prints completion" {
+  #R015-T01: With live sessions verifies terminate query executes before database drop.
+  #R020-T01: Run script twice verifies second run remains safe.
+  #R025-T01: Verify successful run prints completion message.
   #R015 #R020 #R025
   cat > "${STUB_BIN}/1psa" <<'EOF'
 #!/usr/bin/env bash

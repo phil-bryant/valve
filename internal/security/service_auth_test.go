@@ -9,6 +9,10 @@ import (
 )
 
 func TestIsServiceAuthorizedUsesConstantTimeMatchSemantics(t *testing.T) {
+	// #R001-T01: Empty expected returns false.
+	// #R001-T02: Empty provided returns false.
+	// #R001-T03: Matching non-empty values return true.
+	// #R001-T04: Non-matching values return false.
 	// #R001: Authorization requires non-empty values and exact key match.
 	if !IsServiceAuthorized("svc-key", "svc-key") {
 		t.Fatalf("expected valid key pair to authorize")
@@ -22,6 +26,9 @@ func TestIsServiceAuthorizedUsesConstantTimeMatchSemantics(t *testing.T) {
 }
 
 func TestServiceAuthMiddlewareRejectsUnauthorizedRequests(t *testing.T) {
+	// #R005-T01: Missing X-Valve-Service-Key returns HTTP 401 with application/json and error body.
+	// #R005-T02: Incorrect key returns HTTP 401 with application/json and error body.
+	// #R005-T04: 401 response body is valid JSON with non-empty error field.
 	// #R005: Middleware blocks unauthorized requests before downstream execution
 	// and emits a JSON-encoded ErrorResponse so the body matches the OpenAPI
 	// contract used by DAST Schemathesis preflight.
@@ -49,6 +56,7 @@ func TestServiceAuthMiddlewareRejectsUnauthorizedRequests(t *testing.T) {
 }
 
 func TestServiceAuthMiddlewareAllowsAuthorizedRequests(t *testing.T) {
+	// #R005-T03: Correct key allows request to reach downstream handler.
 	called := false
 	handler := ServiceAuthMiddleware("svc-key", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		called = true

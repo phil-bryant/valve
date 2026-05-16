@@ -393,7 +393,7 @@ EOF
 
 setup_fixture() {
   create_repo_fixture
-  copy_script_to_fixture "06_run_security_checks.sh"
+  copy_script_to_fixture "07_run_security_checks.sh"
   copy_openapi_to_fixture
 }
 
@@ -419,6 +419,7 @@ teardown() {
 }
 
 @test "runs from non-repo cwd and writes reports under script root" {
+  #R001-T01: Run from non-repo cwd verifies report artifacts written under script-root .security-reports.
   #R001
   make_semgrep_stub
   make_shellcheck_stub '[]'
@@ -428,15 +429,16 @@ teardown() {
   make_govulncheck_stub '{}'
   mkdir -p "${TEST_TMPDIR}/elsewhere"
   run env RUN_DAST=false PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash -c "cd '${TEST_TMPDIR}/elsewhere' && bash '${FIXTURE_ROOT}/06_run_security_checks.sh'"
+    bash -c "cd '${TEST_TMPDIR}/elsewhere' && bash '${FIXTURE_ROOT}/07_run_security_checks.sh'"
   [ "$status" -eq 0 ]
   [ -f "${FIXTURE_ROOT}/.security-reports/sast-summary.json" ]
 }
 
 @test "fails fast with installer guidance when semgrep is missing" {
+  #R005-T01: Run SAST lane with missing semgrep verifies non-zero failure plus installer guidance.
   #R005
   run env RUN_DAST=false PATH="/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -ne 0 ]
   [[ "$output" == *"Missing required command: semgrep"* ]]
   [[ "$output" == *"./01_install_prerequisites.sh"* ]]
@@ -447,13 +449,14 @@ teardown() {
   make_semgrep_stub
   make_detect_secrets_stub '{"results":{}}'
   run env RUN_DAST=false PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -ne 0 ]
   [[ "$output" == *"Missing required command: shellcheck"* ]]
   [[ "$output" == *"./01_install_prerequisites.sh"* ]]
 }
 
 @test "does not run dependency freshness lane and emits no dependency artifacts" {
+  #R010-T01: Run step-06 without dependency freshness script verifies SAST execution still succeeds.
   #R010
   make_semgrep_stub
   make_shellcheck_stub '[]'
@@ -462,13 +465,14 @@ teardown() {
   make_gosec_stub '{"Issues":[]}'
   make_govulncheck_stub '{}'
   run env PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" RUN_DAST=false \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 0 ]
   [ ! -f "${FIXTURE_ROOT}/.security-reports/dependency-freshness.txt" ]
   [ ! -f "${FIXTURE_ROOT}/.security-reports/dependency-freshness.json" ]
 }
 
 @test "writes all SAST scanner artifacts and summary" {
+  #R015-T01: Run SAST lane with stubs verifies each expected scanner artifact file is generated.
   #R015
   make_semgrep_stub
   make_shellcheck_stub '[]'
@@ -477,7 +481,7 @@ teardown() {
   make_gosec_stub '{"Issues":[]}'
   make_govulncheck_stub '{}'
   run env RUN_DAST=false PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 0 ]
   [ -f "${FIXTURE_ROOT}/.security-reports/semgrep.json" ]
   [ -f "${FIXTURE_ROOT}/.security-reports/shellcheck.json" ]
@@ -499,7 +503,7 @@ teardown() {
   make_gosec_stub '{"Issues":[]}'
   make_govulncheck_stub '{}'
   run env RUN_DAST=false SECURITY_FAIL_ON_HIGH_CRITICAL=true PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 1 ]
   [[ "$output" == *"SAST) gate failed"* ]]
   run python3 -c 'import json,sys;print(json.load(open(sys.argv[1], encoding="utf-8"))["govet_findings"])' "${FIXTURE_ROOT}/.security-reports/sast-summary.json"
@@ -508,6 +512,7 @@ teardown() {
 }
 
 @test "fails SAST gate when findings exist and fail-on-high is enabled" {
+  #R020-T01: Seed finding-producing scanner outputs verifies gate fails with explicit SAST gate message.
   #R020
   make_semgrep_stub
   make_shellcheck_stub '[]'
@@ -516,7 +521,7 @@ teardown() {
   make_gosec_stub '{"Issues":[]}'
   make_govulncheck_stub '{}'
   run env RUN_DAST=false SECURITY_FAIL_ON_HIGH_CRITICAL=true PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 1 ]
   [[ "$output" == *"SAST) gate failed"* ]]
 }
@@ -530,7 +535,7 @@ teardown() {
   make_gosec_stub '{"Issues":[]}'
   make_govulncheck_stub '{}'
   run env RUN_DAST=false GOSEC_EXPECT_ARGS_CONTAIN="-exclude-dir=.gomodcache" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 0 ]
 }
 
@@ -543,7 +548,7 @@ teardown() {
   make_gosec_stub '{"Issues":[]}'
   make_govulncheck_stub '{}'
   run env RUN_DAST=false DETECT_SECRETS_EXPECT_ARGS_CONTAIN="--exclude-files (^|/)\\.gomodcache/|(^|/)requirements/.*-requirements\\.md$|(^|/)\\.cursor/plans/.*\\.plan\\.md$" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 0 ]
 }
 
@@ -556,7 +561,7 @@ teardown() {
   make_gosec_stub '{"Issues":[]}'
   make_govulncheck_stub '{}'
   run env RUN_DAST=false SECURITY_FAIL_ON_HIGH_CRITICAL=true PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 0 ]
   run python3 -c 'import json,sys;print(json.load(open(sys.argv[1], encoding="utf-8"))["detect_secrets_findings"])' "${FIXTURE_ROOT}/.security-reports/sast-summary.json"
   [ "$status" -eq 0 ]
@@ -587,7 +592,7 @@ EOF
   make_gosec_stub '{"Issues":[]}'
   make_govulncheck_stub '{}'
   run env RUN_DAST=false SECURITY_FAIL_ON_HIGH_CRITICAL=true PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 1 ]
   [[ "$output" == *"SAST) gate failed"* ]]
   [[ "$output" == *"❌ Detect-secrets findings (in scope):"* ]]
@@ -599,11 +604,16 @@ EOF
 }
 
 @test "runs DAST health probe and emits DAST artifacts by default" {
+  #R025-T01: Run without setting RUN_DAST verifies DAST executes.
+  #R030-T01: Run DAST lane with failing curl stub verifies explicit non-zero failure output.
+  #R035-T01: Run DAST lane with local zap-baseline.py stub verifies dast-zap-report.json is created.
+  #R040-T01: Run DAST lane with clean scanner output verifies dast-summary.json indicates gate pass.
+  #R050-T01: Run DAST lane with stubs verifies console output includes runner resolution and timeout.
   #R025 #R030 #R035 #R040 #R050
   make_curl_stub 0
   make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
   run env RUN_SAST=false DAST_AUTO_BOOT=false RUN_SCHEMATHESIS=false PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *"DAST runner resolved to:"* ]]
   [[ "$output" == *"DAST timeout:"* ]]
@@ -616,6 +626,7 @@ EOF
 }
 
 @test "prints explicit DAST startup marker after SAST completion" {
+  #R060-T01: Run with both lanes enabled verifies output contains SAST completion followed by DAST startup marker.
   #R060
   make_semgrep_stub
   make_shellcheck_stub '[]'
@@ -626,12 +637,13 @@ EOF
   make_curl_stub 0
   make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
   run env DAST_AUTO_BOOT=false RUN_SCHEMATHESIS=false PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *"✅ Static Application Security Testing (SAST) checks completed."*"▶ Starting Dynamic Application Security Testing (DAST) lane..."* ]]
 }
 
 @test "auto-boots service for DAST when enabled" {
+  #R025-T04: Run with auto-boot enabled and dast_port populated verifies VALVE_ADDR uses that port.
   #R025
   make_go_stub
   make_1psa_stub
@@ -640,7 +652,7 @@ EOF
   local boot_port
   boot_port="$(allocate_free_port)"
   run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=false ONEPSA_DAST_BASE_URL_VALUE="http://127.0.0.1:${boot_port}" ONEPSA_DATABASE_USERNAME_VALUE="from-user" ONEPSA_DATABASE_PW_VALUE="from-pw" ONEPSA_DATABASE_HOST_VALUE="db.example.internal" ONEPSA_DATABASE_PORT_VALUE="6543" GO_STUB_LOG_PATH="${TEST_TMPDIR}/go-stub.log" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 0 ]
   [ -f "${TEST_TMPDIR}/go-stub.log" ]
   [[ "$(cat "${TEST_TMPDIR}/go-stub.log")" == *"run ./cmd/valve"* ]]
@@ -651,13 +663,14 @@ EOF
 }
 
 @test "fails when no DAST endpoint fields are available and DAST_BASE_URL is unset" {
+  #R025-T03: Run with auto-boot enabled and no DAST endpoint fields verifies fail-fast output.
   #R025
   make_go_stub
   make_1psa_stub
   make_curl_stub 0
   make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
   run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=false GO_STUB_LOG_PATH="${TEST_TMPDIR}/go-stub.log" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 1 ]
   [[ "$output" == *"Unable to resolve DAST endpoint."* ]]
   [[ "$output" == *"Set DAST_BASE_URL or populate one of these 1psa fields"* ]]
@@ -672,7 +685,7 @@ EOF
   local boot_port
   boot_port="$(allocate_free_port)"
   run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=false ONEPSA_DAST_PORT_VALUE="${boot_port}" GO_STUB_LOG_PATH="${TEST_TMPDIR}/go-stub.log" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 0 ]
   [ -f "${TEST_TMPDIR}/go-stub.log" ]
   [[ "$(cat "${TEST_TMPDIR}/go-stub.log")" == *"VALVE_ADDR=127.0.0.1:${boot_port}"* ]]
@@ -687,7 +700,7 @@ EOF
   local boot_port
   boot_port="$(allocate_free_port)"
   run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=false ONEPSA_DAST_PROTOCOL_VALUE="https" ONEPSA_DAST_HOST_VALUE="localhost" ONEPSA_DAST_ENDPOINT_PORT_VALUE="${boot_port}" GO_STUB_LOG_PATH="${TEST_TMPDIR}/go-stub.log" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 0 ]
   [ -f "${TEST_TMPDIR}/go-stub.log" ]
   [[ "$(cat "${TEST_TMPDIR}/go-stub.log")" == *"VALVE_ADDR=localhost:${boot_port}"* ]]
@@ -702,7 +715,7 @@ EOF
   local boot_port
   boot_port="$(allocate_free_port)"
   run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=false ONEPSA_DAST_PORT_VALUE="${boot_port}" ONEPSA_DATABASE_USERNAME_MISSING=true GO_STUB_LOG_PATH="${TEST_TMPDIR}/go-stub.log" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 0 ]
   [ -f "${TEST_TMPDIR}/go-stub.log" ]
   [[ "$(cat "${TEST_TMPDIR}/go-stub.log")" == *"VALVE_DATABASE_URL=postgres://valve:"* ]]
@@ -717,24 +730,26 @@ EOF
   local boot_port
   boot_port="$(allocate_free_port)"
   run env RUN_SAST=false DAST_AUTO_BOOT=true DAST_BASE_URL="http://127.0.0.1:${boot_port}" RUN_SCHEMATHESIS=false GO_STUB_LOG_PATH="${TEST_TMPDIR}/go-stub.log" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 0 ]
   [ -f "${TEST_TMPDIR}/go-stub.log" ]
   [[ "$(cat "${TEST_TMPDIR}/go-stub.log")" == *"VALVE_ADDR=127.0.0.1:${boot_port}"* ]]
 }
 
 @test "requires 1psa for DAST auto-boot even when VALVE_DATABASE_URL is set" {
+  #R025-T06: Run with explicit VALVE_DATABASE_URL while 1psa unavailable verifies fail-fast output.
   #R025
   make_go_stub
   local override_db_url="postgres://override_user:"
   override_db_url+="override_pw@db.override:5432/valve?sslmode=disable"
   run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=false VALVE_DATABASE_URL="${override_db_url}" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 1 ]
   [[ "$output" == *"Missing required command: 1psa"* ]]
 }
 
 @test "fails when auto-booted service exits before health probe succeeds" {
+  #R030-T03: Run DAST lane with crashing auto-boot stub verifies fail-fast output indicates pre-health process exit.
   #R030
   make_go_stub_exit_immediately
   make_1psa_stub
@@ -743,12 +758,13 @@ EOF
   local boot_port
   boot_port="$(allocate_free_port)"
   run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=false ONEPSA_DAST_PORT_VALUE="${boot_port}" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 1 ]
   [[ "$output" == *"Auto-booted valve service exited"* ]]
 }
 
 @test "diagnostic auto-boot log dump tolerates NUL bytes without aborting" {
+  #R030-T04: Run DAST lane with NUL-padded dast-app.log verifies dump completes without aborting.
   #R030
   make_go_stub_writes_nul_log
   make_1psa_stub
@@ -757,7 +773,7 @@ EOF
   local boot_port
   boot_port="$(allocate_free_port)"
   run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=false ONEPSA_DAST_PORT_VALUE="${boot_port}" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 1 ]
   [[ "$output" == *"Auto-booted valve service exited"* ]]
   [[ "$output" == *"first auto-boot diagnostic line"* ]]
@@ -767,6 +783,7 @@ EOF
 }
 
 @test "fails fast with PID diagnostic when DAST bind address is already in use" {
+  #R030-T05: Run DAST lane with bind address already held verifies fail-fast output names offending PID.
   #R030
   local preflight_port=""
   preflight_port="$(python3 -c 'import socket
@@ -801,7 +818,7 @@ time.sleep(30)
     DAST_BASE_URL="http://127.0.0.1:${preflight_port}" \
     GO_STUB_LOG_PATH="${TEST_TMPDIR}/go-stub.log" \
     PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   kill "${listener_pid}" 2>/dev/null || true
   wait "${listener_pid}" 2>/dev/null || true
   [ "$status" -eq 1 ]
@@ -812,6 +829,7 @@ time.sleep(30)
 }
 
 @test "readiness probe suppresses transient curl noise but dumps it on real failure" {
+  #R030-T02: Run DAST lane with passing curl verifies dast-health.log created and no transient errors printed.
   #R030
   # Use a 30s-lived auto-boot stub so the post-readiness "still alive" recheck
   # cannot race the stub's exit while we are also exercising probe retries.
@@ -824,7 +842,7 @@ time.sleep(30)
   local boot_port
   boot_port="$(allocate_free_port)"
   run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=false ONEPSA_DAST_PORT_VALUE="${boot_port}" GO_STUB_LOG_PATH="${TEST_TMPDIR}/go-stub.log" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 0 ]
   # Transient "connection refused" lines must NOT bleed onto the terminal once
   # the probe ultimately succeeds; they belong in the captured health log.
@@ -835,17 +853,19 @@ time.sleep(30)
 }
 
 @test "readiness probe failure dumps captured health log for diagnostics" {
+  #R030-T01: Run DAST lane with failing curl stub verifies explicit non-zero failure output with last health probe output.
   #R030
   make_curl_stub 1
   make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
   run env RUN_SAST=false RUN_DAST=true DAST_AUTO_BOOT=false RUN_SCHEMATHESIS=false PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 1 ]
   [[ "$output" == *"DAST health probe failed:"* ]]
   [[ "$output" == *"Last health probe output:"* ]]
 }
 
 @test "auto-boot cleanup reaps spawned child binary via process-group teardown" {
+  #R030-T06: Run DAST lane with lingering child stub verifies cleanup terminates the grandchild.
   #R030
   make_go_stub_with_lingering_child
   make_1psa_stub
@@ -854,7 +874,7 @@ time.sleep(30)
   local boot_port
   boot_port="$(allocate_free_port)"
   run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=false ONEPSA_DAST_PORT_VALUE="${boot_port}" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 0 ]
   [ -f "${TEST_TMPDIR}/lingering-child.pid" ]
   local child_pid=""
@@ -876,7 +896,7 @@ time.sleep(30)
   run env RUN_SAST=false DAST_AUTO_BOOT=false RUN_SCHEMATHESIS=false \
     ZAP_BASELINE_STUB_TARGET_LOG="${TEST_TMPDIR}/zap-target.log" \
     PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 0 ]
   [ -f "${TEST_TMPDIR}/zap-target.log" ]
   [[ "$(cat "${TEST_TMPDIR}/zap-target.log")" == *"/healthz"* ]]
@@ -890,7 +910,7 @@ time.sleep(30)
     DAST_ZAP_TARGET_URL="http://127.0.0.1:8080/v1/valve/credentials" \
     ZAP_BASELINE_STUB_TARGET_LOG="${TEST_TMPDIR}/zap-target.log" \
     PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 0 ]
   [ -f "${TEST_TMPDIR}/zap-target.log" ]
   [[ "$(cat "${TEST_TMPDIR}/zap-target.log")" == "http://127.0.0.1:8080/v1/valve/credentials" ]]
@@ -901,7 +921,7 @@ time.sleep(30)
   make_curl_stub 0
   make_zap_baseline_stub_404_entry
   run env RUN_SAST=false DAST_AUTO_BOOT=false RUN_SCHEMATHESIS=false PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 1 ]
   [[ "$output" == *"OWASP ZAP could not scan"* ]]
   [[ "$output" == *"entry URL did not return 2xx"* ]]
@@ -910,18 +930,20 @@ time.sleep(30)
 }
 
 @test "runs Schemathesis and writes junit artifact" {
+  #R040-T05: Run DAST lane with Schemathesis contract failures verifies gate failure output.
   #R040
   make_curl_stub 0
   make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
   make_schemathesis_stub 0
   run env RUN_SAST=false DAST_AUTO_BOOT=false RUN_SCHEMATHESIS=true PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 0 ]
   [ -f "${FIXTURE_ROOT}/.security-reports/schemathesis.log" ]
   [ -f "${FIXTURE_ROOT}/.security-reports/schemathesis-junit.xml" ]
 }
 
 @test "auto-boot mints ephemeral service auth key and forwards it to Schemathesis" {
+  #R040-T06: Run DAST lane with auto-boot enabled verifies auto-booted valve service receives same VALVE_SERVICE_AUTH_KEY forwarded to Schemathesis.
   #R040
   make_go_stub
   make_1psa_stub
@@ -935,7 +957,7 @@ time.sleep(30)
     GO_STUB_LOG_PATH="${TEST_TMPDIR}/go-stub.log" \
     SCHEMATHESIS_STUB_HEADERS_LOG_PATH="${TEST_TMPDIR}/schemathesis-headers.log" \
     PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 0 ]
   [ -f "${TEST_TMPDIR}/go-stub.log" ]
   [ -f "${TEST_TMPDIR}/schemathesis-headers.log" ]
@@ -948,6 +970,7 @@ time.sleep(30)
 }
 
 @test "auto-boot reuses operator-provided VALVE_SERVICE_AUTH_KEY verbatim" {
+  #R040-T07: Run DAST lane with operator-provided VALVE_SERVICE_AUTH_KEY verifies script reuses that value verbatim.
   #R040
   make_go_stub
   make_1psa_stub
@@ -965,7 +988,7 @@ time.sleep(30)
     GO_STUB_LOG_PATH="${TEST_TMPDIR}/go-stub.log" \
     SCHEMATHESIS_STUB_HEADERS_LOG_PATH="${TEST_TMPDIR}/schemathesis-headers.log" \
     PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 0 ]
   [[ "$(cat "${TEST_TMPDIR}/go-stub.log")" == *"VALVE_SERVICE_AUTH_KEY=${operator_key}"* ]]
   [[ "$(cat "${TEST_TMPDIR}/schemathesis-headers.log")" == *"X-Valve-Service-Key: ${operator_key}"* ]]
@@ -977,23 +1000,25 @@ time.sleep(30)
   make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
   make_schemathesis_stub 1
   run env RUN_SAST=false DAST_AUTO_BOOT=false RUN_SCHEMATHESIS=true SECURITY_FAIL_ON_HIGH_CRITICAL=true PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 1 ]
   [[ "$output" == *"DAST) gate failed"* ]]
 }
 
 @test "uses canonical default Schemathesis schema path contract" {
+  #R055-T01: Run with default RUN_SCHEMATHESIS=true and no override verifies Schemathesis runs using canonical openapi/valve.v1.yaml.
   #R055
   make_curl_stub 0
   make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
   make_schemathesis_stub 0
   run env RUN_SAST=false DAST_AUTO_BOOT=false RUN_SCHEMATHESIS=true SCHEMATHESIS_STUB_LOG_PATH="${TEST_TMPDIR}/schemathesis-schema.log" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 0 ]
   [[ "$(cat "${TEST_TMPDIR}/schemathesis-schema.log")" == "${FIXTURE_ROOT}/openapi/valve.v1.yaml" ]]
 }
 
 @test "fails fast when Schemathesis schema path is missing before DAST boot health scan" {
+  #R055-T02: Run with RUN_SCHEMATHESIS=true and missing schema path verifies fail-fast output contains schema-path diagnostics.
   #R055
   make_go_stub
   make_1psa_stub
@@ -1001,7 +1026,7 @@ time.sleep(30)
   make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
   make_schemathesis_stub 0
   run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=true GO_STUB_LOG_PATH="${TEST_TMPDIR}/go-stub.log" SCHEMATHESIS_SCHEMA_PATH="${FIXTURE_ROOT}/openapi/missing.v1.yaml" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 1 ]
   [[ "$output" == *"Schemathesis schema file not found:"* ]]
   [[ "$output" == *"Set SCHEMATHESIS_SCHEMA_PATH or add openapi/valve.v1.yaml."* ]]
@@ -1011,6 +1036,7 @@ time.sleep(30)
 }
 
 @test "uses SCHEMATHESIS_SCHEMA_PATH override when provided" {
+  #R055-T03: Run with SCHEMATHESIS_SCHEMA_PATH override verifies Schemathesis execution uses the override path.
   #R055
   local override_schema="${FIXTURE_ROOT}/openapi/custom.v1.yaml"
   make_curl_stub 0
@@ -1018,7 +1044,7 @@ time.sleep(30)
   make_schemathesis_stub 0
   printf '%s\n' 'openapi: 3.0.3' > "${override_schema}"
   run env RUN_SAST=false DAST_AUTO_BOOT=false RUN_SCHEMATHESIS=true SCHEMATHESIS_SCHEMA_PATH="${override_schema}" SCHEMATHESIS_STUB_LOG_PATH="${TEST_TMPDIR}/schemathesis-override.log" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 0 ]
   [[ "$(cat "${TEST_TMPDIR}/schemathesis-override.log")" == "${override_schema}" ]]
 }
@@ -1026,7 +1052,7 @@ time.sleep(30)
 @test "skips DAST lane only when explicitly opted out" {
   #R025
   run env RUN_SAST=false RUN_DAST=false DAST_AUTO_BOOT=false RUN_SCHEMATHESIS=false PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *"DAST lane skipped."* ]]
 }
@@ -1036,7 +1062,7 @@ time.sleep(30)
   make_curl_stub 1
   make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
   run env RUN_SAST=false RUN_DAST=true DAST_AUTO_BOOT=false RUN_SCHEMATHESIS=false PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 1 ]
   [[ "$output" == *"health probe"* ]]
 }
@@ -1046,7 +1072,7 @@ time.sleep(30)
   make_curl_stub 0
   make_zap_baseline_stub '{"site":[{"alerts":[{"riskcode":"2","alertRef":"00000","instances":[{"uri":"http://127.0.0.1:8080/risky"}]}]}]}' 1
   run env RUN_SAST=false RUN_DAST=true DAST_AUTO_BOOT=false RUN_SCHEMATHESIS=false PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 1 ]
   [[ "$output" == *"DAST) gate failed"* ]]
 }
@@ -1056,7 +1082,7 @@ time.sleep(30)
   make_curl_stub 0
   make_zap_baseline_stub '{"site":[{"alerts":[{"riskcode":"2","alertRef":"10055-13","instances":[{"uri":"http://127.0.0.1:8080/known-noise"}]}]}]}' 1
   run env RUN_SAST=false RUN_DAST=true DAST_AUTO_BOOT=false RUN_SCHEMATHESIS=false PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *"DAST) summary"* || "$output" == *"DAST) checks completed."* ]]
 }
@@ -1066,20 +1092,23 @@ time.sleep(30)
   make_curl_stub 0
   make_zap_baseline_stub '{"site":[{"alerts":[{"riskcode":"3","alertRef":"90000","instances":[{"uri":"http://127.0.0.1:9999/off-target"}]}]}]}' 1
   run env RUN_SAST=false RUN_DAST=true DAST_AUTO_BOOT=false RUN_SCHEMATHESIS=false PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 0 ]
 }
 
 @test "fails DAST lane when no ZAP runner is available" {
+  #R035-T02: Run DAST lane without zap-baseline.py and without ZAP CLI verifies explicit missing-command failure output.
   #R035
   make_curl_stub 0
   run env RUN_SAST=false DAST_AUTO_BOOT=false RUN_SCHEMATHESIS=false PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" ZAP_APP_PATH="${TEST_TMPDIR}/missing-zap-app" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 1 ]
   [[ "$output" == *"Missing required command: zap-baseline.py or ZAP.sh"* ]]
 }
 
 @test "runs DAST lane when ZAP.sh is discovered via ZAP_APP_PATH" {
+  #R035-T03: Run DAST lane with ZAP CLI available only under ZAP_APP_PATH verifies scan invocation succeeds.
+  #R050-T02: Run DAST lane with ZAP CLI fallback verifies invocation includes -quickprogress and output captured in dast-zap.log.
   #R035
   make_curl_stub 0
   local zap_app_path="${TEST_TMPDIR}/Applications/ZAP.app"
@@ -1108,7 +1137,7 @@ exit 0
 EOF
   chmod +x "${zap_app_path}/Contents/MacOS/ZAP.sh"
   run env RUN_SAST=false DAST_AUTO_BOOT=false RUN_SCHEMATHESIS=false PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" ZAP_APP_PATH="${zap_app_path}" ZAP_CLI_ARGS_LOG_PATH="${zap_cli_args_log}" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Attack complete"* ]]
   [ -f "${FIXTURE_ROOT}/.security-reports/dast-zap-report.json" ]
@@ -1118,6 +1147,7 @@ EOF
 }
 
 @test "prints final completion output with report path" {
+  #R045-T01: Run with enabled lanes passing verifies final completion line includes Reports:.
   #R045
   make_semgrep_stub
   make_shellcheck_stub '[]'
@@ -1126,7 +1156,7 @@ EOF
   make_gosec_stub '{"Issues":[]}'
   make_govulncheck_stub '{}'
   run env RUN_DAST=false PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/06_run_security_checks.sh"
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Security checks completed. Reports:"* ]]
 }

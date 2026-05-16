@@ -69,6 +69,7 @@ type UploadTargetDiscoveryConfig struct {
 	AllowedUploadTargetHosts []string
 }
 
+// #R025: Validate and apply upload target discovery configuration atomically.
 func (s *Service) ConfigureUploadTargetDiscovery(cfg UploadTargetDiscoveryConfig) error {
 	if cfg.TTLSeconds <= 0 {
 		return fmt.Errorf("%w: upload target ttl_seconds must be > 0", ErrInvalidInput)
@@ -349,6 +350,7 @@ func (s *Service) VerificationLookup(ctx context.Context, credentialID string) (
 	return resp, nil
 }
 
+// #R020: Validate, authorize, and resolve upload target for active credentials.
 func (s *Service) UploadTarget(ctx context.Context, req UploadTargetRequest) (UploadTargetResponse, error) {
 	if err := ValidateUploadTargetRequest(req); err != nil {
 		return UploadTargetResponse{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)

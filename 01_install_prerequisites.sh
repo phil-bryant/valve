@@ -128,7 +128,7 @@ ensure_sast_tools() {
 }
 
 ensure_dast_tools() {
-    #R055: Ensure DAST runtime tooling is available for step-06.
+    #R055: Ensure DAST runtime tooling is available for step-07.
     ensure_brew_formula "schemathesis" "schemathesis"
     local zap_baseline_path=""
     local zap_cli_path=""
@@ -166,6 +166,66 @@ ensure_1psa() {
     echo "❌ [1psa] Missing."
     echo "Install and authenticate 1psa, then rerun this installer."
     exit 1
+}
+
+ensure_gremlins() {
+    #R060: Ensure mutation testing tooling is available for step-06.
+    local gremlins_path=""
+    echo "[gremlins] Checking..."
+    if gremlins_path="$(resolve_go_tool gremlins)"; then
+        if [ "${gremlins_path}" != "gremlins" ]; then
+            export PATH="$(dirname "${gremlins_path}"):${PATH}"
+            echo "✅ [gremlins] Available via ${gremlins_path}"
+            return
+        fi
+        echo "✅ [gremlins] Available on PATH"
+        return
+    fi
+    echo "⚠️  [gremlins] Missing; installing via go install..."
+    go install github.com/go-gremlins/gremlins/cmd/gremlins@latest
+    if gremlins_path="$(resolve_go_tool gremlins)"; then
+        if [ "${gremlins_path}" != "gremlins" ]; then
+            export PATH="$(dirname "${gremlins_path}"):${PATH}"
+            echo "✅ [gremlins] Installed and available via ${gremlins_path}"
+            return
+        fi
+        echo "✅ [gremlins] Installed and available on PATH"
+        return
+    fi
+    echo "❌ [gremlins] Install completed but command is still missing."
+    echo "Ensure Go bin directory (\$GOBIN or \$(go env GOPATH)/bin) is on your PATH and rerun."
+    exit 1
+}
+
+resolve_go_bin_dir() {
+    local go_bin_dir=""
+    go_bin_dir="$(go env GOBIN 2>/dev/null || true)"
+    if [ -n "${go_bin_dir}" ]; then
+        echo "${go_bin_dir}"
+        return 0
+    fi
+    go_bin_dir="$(go env GOPATH 2>/dev/null || true)"
+    if [ -n "${go_bin_dir}" ]; then
+        echo "${go_bin_dir}/bin"
+        return 0
+    fi
+    return 1
+}
+
+resolve_go_tool() {
+    local tool_name="$1"
+    local go_bin_dir=""
+    if command -v "${tool_name}" >/dev/null 2>&1; then
+        echo "${tool_name}"
+        return 0
+    fi
+    if go_bin_dir="$(resolve_go_bin_dir)"; then
+        if [ -x "${go_bin_dir}/${tool_name}" ]; then
+            echo "${go_bin_dir}/${tool_name}"
+            return 0
+        fi
+    fi
+    return 1
 }
 
 resolve_zap_baseline() {
@@ -223,13 +283,8 @@ resolve_zap_cli() {
 
 print_final_guidance() {
     #R045: Print final local readiness guidance.
-    echo ""
     echo "✅ All prerequisites are satisfied for this repository."
     echo ""
-    echo "Next commands:"
-    echo "- go test ./..."
-    echo "- go test -race ./..."
-    echo "- golangci-lint run"
 }
 
 main() {
@@ -244,6 +299,7 @@ main() {
     ensure_lint_tools
     ensure_sast_tools
     ensure_dast_tools
+    ensure_gremlins
     ensure_1psa
     print_final_guidance
 }

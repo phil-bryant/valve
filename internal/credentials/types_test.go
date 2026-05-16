@@ -6,6 +6,9 @@ import (
 )
 
 func TestCredentialConstantsAndShapes(t *testing.T) {
+	// #R001-T01: Mode and status constants have expected string values.
+	// #R005-T01: JSON-marshalling RegisterResponse with empty Secret omits secret key.
+	// #R010-T01: CredentialRecord round-trips through JSON without losing RevokedAt.
 	// #R001: Credential mode and lifecycle constants remain canonical.
 	if ModeEd25519 == "" || ModeHMACSHA256 == "" || StatusActive == "" || StatusRevoked == "" || StatusRotated == "" {
 		t.Fatalf("expected non-empty credential constants")

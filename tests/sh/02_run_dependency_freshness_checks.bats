@@ -43,6 +43,11 @@ EOF
 }
 
 @test "R001,R005,R010,R015,R025: runs from non-root and writes valve freshness artifacts" {
+  #R001-T01: Run from non-root directory verifies reports written under repository-root .security-reports.
+  #R005-T01: Run with stubbed go on PATH verifies selected binary is reported.
+  #R010-T01: Run with update-producing stub output verifies text report includes direct-module update entries.
+  #R015-T01: Run with update-producing stub output verifies JSON report contains counts and module fields.
+  #R025-T01: Run script successfully verifies output includes report paths plus update and major-update counts.
   #R001 #R005 #R010 #R015 #R025
   local fixture_root script_output
   fixture_root="$(mktemp -d)"
@@ -66,6 +71,7 @@ EOF
 }
 
 @test "R005: fails fast when configured Go binary is missing" {
+  #R005-T02: Set DEPENDENCY_CHECK_GO_BIN to missing command verifies non-zero failure.
   #R005
   local fixture_root
   fixture_root="$(mktemp -d)"
@@ -77,6 +83,7 @@ EOF
 }
 
 @test "R020: fails when major updates exist and fail-on-major is enabled" {
+  #R020-T03: Run with major update present and DEPENDENCY_FAIL_ON_MAJOR=true verifies non-zero exit.
   #R020
   local fixture_root
   fixture_root="$(mktemp -d)"
@@ -89,6 +96,7 @@ EOF
 }
 
 @test "R020: fails by default when any updates are available" {
+  #R020-T01: Run with updates present and default configuration verifies non-zero exit.
   #R020
   local fixture_root
   fixture_root="$(mktemp -d)"
@@ -99,6 +107,7 @@ EOF
 }
 
 @test "R020: allows updates when fail-on-updates is disabled" {
+  #R020-T02: Run with updates present and DEPENDENCY_FAIL_ON_UPDATES=false verifies zero exit.
   #R020
   local fixture_root
   fixture_root="$(mktemp -d)"

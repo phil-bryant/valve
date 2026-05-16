@@ -2,6 +2,8 @@ import AppKit
 import SwiftUI
 import ValveDomain
 
+// #R001: Root view model supports credential provisioning, revocation, rotation, listing, and health checking.
+// #R005: Inventory view supports direct copying of any provisioned credential ID to system pasteboard.
 @MainActor
 public final class RootViewModel: ObservableObject
 { @Published public var tenantID: String

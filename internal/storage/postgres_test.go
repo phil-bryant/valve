@@ -14,6 +14,8 @@ import (
 )
 
 func TestNullableHelpers(t *testing.T) {
+	// #R001-T01: NewPostgresStore returns non-nil store with valid database URL (integration).
+	// #R005-T01: CreateCredential followed by GetCredential returns same record (integration).
 	// #R001: Store helper functions preserve null semantics for optional values.
 	if nullableString("") != nil || nullableBytes(nil) != nil {
 		t.Fatalf("expected nil nullable conversions for empty values")
@@ -28,6 +30,7 @@ func TestNullableHelpers(t *testing.T) {
 }
 
 func TestScanCredentialNoRowsMapsToErrNotFound(t *testing.T) {
+	// #R010-T03: LookupVerification for unknown credential returns ErrNotFound.
 	// #R010: Scan path maps pgx no-rows to storage ErrNotFound semantics.
 	_, _, _, err := scanCredential(fakeScanner{err: pgx.ErrNoRows})
 	if !errors.Is(err, ErrNotFound) {
@@ -36,6 +39,7 @@ func TestScanCredentialNoRowsMapsToErrNotFound(t *testing.T) {
 }
 
 func TestScanCredentialSuccessAndSchemaBootFields(t *testing.T) {
+	// #R015-T01: ApplySchemaFromFile with approved path succeeds (integration).
 	// #R015: Scan path hydrates schema-backed credential fields from database row values.
 	now := time.Now().UTC()
 	row := fakeScanner{values: []any{"cred", "tenant", "install", sql.NullString{String: "actor", Valid: true}, "bundle", sql.NullString{}, sql.NullString{}, "macOS", credentials.ModeEd25519, sql.NullString{String: "pk", Valid: true}, []byte("enc"), sql.NullString{String: "hash", Valid: true}, credentials.StatusActive, sql.NullString{}, sql.NullString{}, now, sql.NullTime{}, sql.NullTime{}, sql.NullTime{}}}
@@ -49,6 +53,8 @@ func TestScanCredentialSuccessAndSchemaBootFields(t *testing.T) {
 }
 
 func TestApplySchemaFromFileRejectsUnapprovedPath(t *testing.T) {
+	// #R020-T02: Passing "../etc/passwd" returns error without reading any file.
+	// #R020-T03: Passing empty string returns error.
 	// #R020: Schema bootstrap only accepts repository-approved schema path.
 	store := &PostgresStore{}
 	err := store.ApplySchemaFromFile(context.Background(), "../tmp/other.sql")

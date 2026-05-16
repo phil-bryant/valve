@@ -100,6 +100,7 @@ teardown() {
 }
 
 @test "fails on first psql error" {
+  #R001-T01: Cause a command failure verifies script exits non-zero.
   #R001
   cat > "${STUB_BIN}/psql" <<'EOF'
 #!/usr/bin/env bash
@@ -111,6 +112,7 @@ EOF
 }
 
 @test "fails when 1psa is unavailable" {
+  #R005-T01: Run with 1psa unavailable verifies explicit non-zero failure output.
   #R005
   export PATH="/usr/bin:/bin:/usr/sbin:/sbin"
   run sh "${FIXTURE_ROOT}/04_verify_deploy_database.sh"
@@ -155,6 +157,7 @@ EOF
 }
 
 @test "fails when psql is unavailable" {
+  #R010-T01: Run with psql missing verifies explicit non-zero failure output.
   #R010
   rm -f "${STUB_BIN}/psql"
   make_1psa_stub
@@ -165,6 +168,7 @@ EOF
 }
 
 @test "fails when required tables are missing" {
+  #R015-T01: Return missing table verifies failure details list the table.
   #R015
   : > "${PSQL_LOG}"
   make_psql_happy
@@ -176,6 +180,7 @@ EOF
 }
 
 @test "fails when required indexes are missing" {
+  #R020-T01: Return missing index verifies failure details list the index.
   #R020
   : > "${PSQL_LOG}"
   make_psql_happy
@@ -187,6 +192,7 @@ EOF
 }
 
 @test "fails when valve credential uniqueness contract is missing" {
+  #R025-T01: Return missing uniqueness check verifies explicit uniqueness diagnostic failure.
   #R025
   : > "${PSQL_LOG}"
   make_psql_happy
@@ -196,6 +202,7 @@ EOF
 }
 
 @test "emits a single pass line for successful verification" {
+  #R030-T01: All-pass run emits a single PASS line.
   #R030
   : > "${PSQL_LOG}"
   make_psql_happy
@@ -205,6 +212,7 @@ EOF
 }
 
 @test "uses fail-fast psql options with 1psa-resolved target and valve user" {
+  #R035-T01: Verify query invocations include ON_ERROR_STOP=1 and 1psa-resolved host/port/database/schema.
   #R035
   : > "${PSQL_LOG}"
   make_psql_happy

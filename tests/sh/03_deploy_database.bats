@@ -82,6 +82,7 @@ setup() {
 }
 
 @test "exits non-zero when schema apply fails" {
+  #R001-T01: Force psql failure verifies script exits non-zero.
   #R001
   make_psql_stub 1
   run bash "${FIXTURE_ROOT}/03_deploy_database.sh"
@@ -89,6 +90,7 @@ setup() {
 }
 
 @test "fails when 1psa is unavailable" {
+  #R005-T01: Run with 1psa unavailable verifies explicit non-zero failure output.
   #R005
   export PATH="/usr/bin:/bin:/usr/sbin:/sbin"
   run bash "${FIXTURE_ROOT}/03_deploy_database.sh"
@@ -133,6 +135,7 @@ setup() {
 }
 
 @test "fails when psql is unavailable" {
+  #R010-T01: Run with psql missing from PATH verifies explicit non-zero failure output.
   #R010
   rm -f "${STUB_BIN}/psql"
   make_1psa_stub
@@ -143,6 +146,7 @@ setup() {
 }
 
 @test "resolves schema path relative to script from different cwd" {
+  #R015-T01: Run script from non-repo working directory verifies schema file still resolves.
   #R015
   run bash "${FIXTURE_ROOT}/03_deploy_database.sh"
   [ "$status" -eq 0 ]
@@ -150,6 +154,7 @@ setup() {
 }
 
 @test "fails when schema file is missing" {
+  #R020-T01: Remove schema file in fixture verifies explicit non-zero failure output.
   #R020
   mv "${FIXTURE_ROOT}/storage/schema.sql" "${FIXTURE_ROOT}/storage/schema.sql.trash"
   run bash "${FIXTURE_ROOT}/03_deploy_database.sh"
@@ -158,6 +163,7 @@ setup() {
 }
 
 @test "applies schema using fail-fast psql flags and 1psa credentials" {
+  #R025-T01: Verify deploy invokes admin psql bootstrap commands and valve schema apply with ON_ERROR_STOP=1.
   #R025
   run env ONEPSA_VALVE_HOST=db.internal ONEPSA_VALVE_PORT=6543 ONEPSA_VALVE_DATABASE=valve_shadow ONEPSA_VALVE_SCHEMA=valve_app bash "${FIXTURE_ROOT}/03_deploy_database.sh"
   [ "$status" -eq 0 ]
@@ -174,6 +180,7 @@ setup() {
 }
 
 @test "prints pass line after successful deploy" {
+  #R030-T01: Verify success output contains a single PASS line.
   #R030
   run bash "${FIXTURE_ROOT}/03_deploy_database.sh"
   [ "$status" -eq 0 ]

@@ -58,6 +58,12 @@ if ! command -v bats >/dev/null; then
   exit 1
 fi
 
+#R010: Refuse unit tests when swift is unavailable.
+if ! command -v swift >/dev/null; then
+  echo "swift is required but was not found on PATH."
+  exit 1
+fi
+
 #R015: Resolve SQL test file path from script directory.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SQL_TEST_FILE="${SCRIPT_DIR}/storage/sql/unit/ingest_schema_pgtap.sql"
@@ -70,6 +76,8 @@ if [ ! -f "$SQL_TEST_FILE" ]; then
 fi
 
 #R025: Ensure pgTAP extension exists in target database.
+echo ""
+echo "▶ Running SQL unit tests (pgTAP)..."
 PGPASSWORD="$DB_PASSWORD" \
   psql "${PSQL_COMMON_ARGS[@]}" -c "CREATE EXTENSION IF NOT EXISTS pgtap;"
 
@@ -78,13 +86,27 @@ PGPASSWORD="$DB_PASSWORD" \
   psql "${PSQL_COMMON_ARGS[@]}" -f "$SQL_TEST_FILE"
 
 #R030: Run Go unit tests only after SQL unit tests pass.
+echo ""
+echo "▶ Running Go unit tests..."
 GO_TEST_OUTPUT_FILE="$(mktemp)"
 if ! go test ./... | tee "$GO_TEST_OUTPUT_FILE"; then
   exit 1
 fi
 
 #R030: Run Bats shell tests only after Go unit tests pass.
+echo ""
+echo "▶ Running Bats shell tests..."
 bats "${SCRIPT_DIR}/tests/sh"
+
+#R037: Run Swift package tests after Bats shell tests pass.
+echo ""
+echo "▶ Running Swift package tests..."
+SWIFT_PACKAGE_DIR="${SCRIPT_DIR}/macos/ValveProvisioningApp"
+if [ ! -d "$SWIFT_PACKAGE_DIR" ] || [ ! -f "${SWIFT_PACKAGE_DIR}/Package.swift" ]; then
+  echo "Swift package not found at ${SWIFT_PACKAGE_DIR}"
+  exit 1
+fi
+swift test --package-path "$SWIFT_PACKAGE_DIR"
 
 #R032: Fail when any Go package reports no associated unit-test files.
 NO_TEST_PACKAGES_FILE="$(mktemp)"
@@ -96,4 +118,5 @@ if [ -s "$NO_TEST_PACKAGES_FILE" ]; then
 fi
 
 #R035: Emit concise operator-readable success output.
-echo "✅ PASS: SQL, Go, and Bats unit tests completed."
+echo ""
+echo "✅ PASS: SQL, Go, Bats, and Swift unit tests completed."

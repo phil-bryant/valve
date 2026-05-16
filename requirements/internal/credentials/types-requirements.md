@@ -4,21 +4,26 @@
 
 Applies to `internal/credentials/types.go`.
 
-R001  Statement: Define canonical credential mode and status constants.
-Design: Design: Expose string constants for supported credential modes and lifecycle statuses.
+R001  Statement: Canonical credential mode and lifecycle status constants must cover all supported values.
+Design: String constants `ModeEd25519 = "ed25519"`, `ModeHMACSHA256 = "hmac_sha256"`, `StatusActive = "active"`, `StatusRevoked = "revoked"`, and `StatusRotated = "rotated"` are the only valid values accepted or produced by the service layer.
 Tests:
-- Add/maintain targeted tests that validate r001 behavior.
+- R001-T01: Verify that `ModeEd25519`, `ModeHMACSHA256`, `StatusActive`, `StatusRevoked`, and `StatusRotated` have the expected string values.
 
-R005  Statement: Define API request/response payload models for credential workflows.
-Design: Design: Maintain register, revoke, rotate, list, and verification request/response structs with JSON tags.
+R005  Statement: API request and response payload models must carry JSON tags matching the wire contract for all credential operations.
+Design: `RegisterRequest`, `RegisterResponse`, `RevokeRequest`, `RevokeResponse`, `RotateRequest`, `RotateResponse`, `UploadTargetRequest`, and `UploadTargetResponse` are defined with `json:` struct tags. `RegisterResponse.Secret` and `RotateResponse.Secret` use `omitempty` so the field is absent from Ed25519 responses. `UploadTargetResponse.RoutingVersion` uses `omitempty`.
 Tests:
-- Add/maintain targeted tests that validate r005 behavior.
+- R005-T01: Verify that JSON-marshalling a `RegisterResponse` with an empty `Secret` field omits the `secret` key.
+- R005-T02: Verify that JSON-marshalling a `RegisterResponse` with a non-empty `Secret` field includes the `secret` key.
+- R005-T03: Verify that JSON-marshalling an `UploadTargetResponse` with an empty `RoutingVersion` omits the `routing_version` key.
 
-R010  Statement: Define persisted credential and audit data models.
-Design: Design: Keep `CredentialRecord` and `AuditEntry` structures with fields needed by storage and API layers.
+R010  Statement: Persisted credential and audit data models must carry all fields required by the storage and API layers.
+Design: `CredentialRecord` includes `CredentialID`, `TenantID`, `InstallID`, `ActorUserID`, `AppBundleID`, `AppVersion`, `AppBuild`, `Platform`, `CredentialMode`, `PublicKey`, `Status`, `ReplacedByCredentialID`, `DeviceLabel`, `CreatedAt`, `RevokedAt`, `RotatedAt`, and `LastSeenAt`. `AuditEntry` includes `ActorUserID`, `TenantID`, `InstallID`, `CredentialID`, `Action`, `Reason`, and `MetadataJSON`. `VerificationResponse` includes `CredentialID`, `TenantID`, `InstallID`, `AppBundleID`, `CredentialMode`, `PublicKey`, `Status`, and `RevokedAt`.
 Tests:
-- Add/maintain targeted tests that validate r010 behavior.
+- R010-T01: Verify that `CredentialRecord` round-trips through JSON without losing `RevokedAt` when it is non-nil.
+- R010-T02: Verify that `VerificationResponse` omits `public_key` when the field is empty (HMAC mode).
 
 ## Changelog
 
+- 2026-05-16: Numbered test bullets with R###-T## scheme.
+- 2026-05-16: Rewrote with concrete field-level and JSON-serialization acceptance criteria.
 - 2026-05-10: Added requirements coverage for backend source traceability.

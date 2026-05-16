@@ -16,6 +16,7 @@ public enum ValidationError: Error, LocalizedError, Sendable
   }
 }
 
+// #R001: Register validation rejects missing required fields, invalid platform, and invalid public key.
 public enum CredentialRequestValidator
 { public static func validateRegister(_ request: RegisterCredentialRequest) throws
   { try validateCommonFields(tenantID: request.tenantID, actorUserID: request.actorUserID, installID: request.installID)
@@ -27,6 +28,7 @@ public enum CredentialRequestValidator
     if !isValidPublicKeyBase64(request.publicKey) { throw ValidationError.invalidPublicKey }
   }
 
+  // #R005: Rotate validation rejects missing identifiers and invalid replacement public key.
   public static func validateRotate(_ request: RotateCredentialRequest) throws
   { try validateCommonFields(tenantID: request.tenantID, actorUserID: request.actorUserID, installID: request.installID)
     if request.oldCredentialID.isEmpty { throw ValidationError.missingField("old_credential_id") }
@@ -36,6 +38,7 @@ public enum CredentialRequestValidator
     if !isValidPublicKeyBase64(request.newPublicKey) { throw ValidationError.invalidPublicKey }
   }
 
+  // #R010: Revoke validation rejects missing identifiers and empty reason.
   public static func validateRevoke(_ request: RevokeCredentialRequest) throws
   { try validateCommonFields(tenantID: request.tenantID, actorUserID: request.actorUserID, installID: nil)
     if request.credentialID.isEmpty { throw ValidationError.missingField("credential_id") }

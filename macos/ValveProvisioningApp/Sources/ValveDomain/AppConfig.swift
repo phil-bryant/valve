@@ -1,5 +1,6 @@
 import Foundation
 
+// #R001: Value-type environment configuration with base URL, tenant, install, and actor identity.
 public struct ValveEnvironment: Equatable, Sendable
 { public let baseURL: URL
   public let tenantID: String

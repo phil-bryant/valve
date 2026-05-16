@@ -4,7 +4,7 @@ load "helpers/common.bash"
 
 setup_fixture() {
   create_repo_fixture
-  copy_script_to_fixture "07_run_av_checks.sh"
+  copy_script_to_fixture "08_run_av_checks.sh"
 }
 
 setup() {
@@ -88,29 +88,32 @@ EOF
 }
 
 @test "runs from non-repo cwd and writes reports under script root" {
+  #R001-T01: Run from non-repo cwd verifies report artifacts written under script-root .security-reports.
   #R001
   make_clamscan_stub_clean
   mkdir -p "${TEST_TMPDIR}/elsewhere"
   run env RUN_CLAMAV=true RUN_DAST=false PATH="${PATH}" \
-    bash -c "cd '${TEST_TMPDIR}/elsewhere' && bash '${FIXTURE_ROOT}/07_run_av_checks.sh'"
+    bash -c "cd '${TEST_TMPDIR}/elsewhere' && bash '${FIXTURE_ROOT}/08_run_av_checks.sh'"
   [ "$status" -eq 0 ]
   [ -f "${FIXTURE_ROOT}/.security-reports/clamav.log" ]
   [ -f "${FIXTURE_ROOT}/.security-reports/clamav-summary.json" ]
 }
 
 @test "fails fast with installer guidance when clamscan is missing" {
+  #R005-T01: Run with clamscan missing verifies non-zero failure plus install guidance output.
   #R005
   run env PATH="/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/07_run_av_checks.sh"
+    bash "${FIXTURE_ROOT}/08_run_av_checks.sh"
   [ "$status" -ne 0 ]
   [[ "$output" == *"Missing required command: clamscan"* ]]
   [[ "$output" == *"./01_install_prerequisites.sh"* ]]
 }
 
 @test "skips ClamAV lane when RUN_CLAMAV=false with deterministic artifacts" {
+  #R010-T01: Run with RUN_CLAMAV=false verifies skipped summary output, empty log artifact, and success exit.
   #R010
   run env RUN_CLAMAV=false PATH="${PATH}" \
-    bash "${FIXTURE_ROOT}/07_run_av_checks.sh"
+    bash "${FIXTURE_ROOT}/08_run_av_checks.sh"
   [ "$status" -eq 0 ]
   [ -f "${FIXTURE_ROOT}/.security-reports/clamav.log" ]
   [ -f "${FIXTURE_ROOT}/.security-reports/clamav-summary.json" ]
@@ -125,10 +128,12 @@ PY
 }
 
 @test "writes scanner artifacts and summary with clean scan output" {
+  #R015-T01: Run with clean clamscan stub output verifies clamav.log is produced with scanner summary fields.
+  #R030-T01: Run with clean scan output verifies summary fields indicate pass.
   #R015 #R030
   make_clamscan_stub_clean
   run env PATH="${PATH}" \
-    bash "${FIXTURE_ROOT}/07_run_av_checks.sh"
+    bash "${FIXTURE_ROOT}/08_run_av_checks.sh"
   [ "$status" -eq 0 ]
   [ -f "${FIXTURE_ROOT}/.security-reports/clamav.log" ]
   [ -f "${FIXTURE_ROOT}/.security-reports/clamav-summary.json" ]
@@ -144,15 +149,17 @@ PY
 }
 
 @test "prints signature freshness line before scan execution" {
+  #R020-T01: Run with scan stub verifies output includes signature freshness status text.
   #R020
   make_clamscan_stub_clean
   run env PATH="${PATH}" \
-    bash "${FIXTURE_ROOT}/07_run_av_checks.sh"
+    bash "${FIXTURE_ROOT}/08_run_av_checks.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *"ClamAV signature freshness:"* ]]
 }
 
 @test "prints freshclam guidance when signatures are stale" {
+  #R020-T02: Run with stale signature files verifies output includes refresh guidance referencing freshclam --stdout.
   #R020
   make_clamscan_stub_clean
   local db_dir="${TEST_TMPDIR}/clamdb"
@@ -171,47 +178,51 @@ os.utime(sig, (old, old))
 PY
   [ "$status" -eq 0 ]
   run env CLAMAV_DB_DIR="$db_dir" CLAMAV_SIGNATURE_MAX_AGE_HOURS=1 PATH="${PATH}" \
-    bash "${FIXTURE_ROOT}/07_run_av_checks.sh"
+    bash "${FIXTURE_ROOT}/08_run_av_checks.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *"ClamAV signatures appear out of date"* ]]
   [[ "$output" == *"Refresh signatures with: freshclam --stdout"* ]]
 }
 
 @test "prints heartbeat progress while waiting for a slow scan" {
+  #R025-T01: Run with slow scan stub plus short heartbeat configuration verifies heartbeat output appears.
   #R025
   make_clamscan_stub_slow_clean
   run env CLAMAV_HEARTBEAT_SECONDS=1 CLAMAV_POLL_SECONDS=1 PATH="${PATH}" \
-    bash "${FIXTURE_ROOT}/07_run_av_checks.sh"
+    bash "${FIXTURE_ROOT}/08_run_av_checks.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *"ClamAV scan in progress"* ]]
 }
 
 @test "fails gate when infected files are detected with fail-on-high enabled" {
+  #R030-T02: Run with infected scan output verifies gate failure output when fail-on-high is enabled.
   #R030
   make_clamscan_stub_infected
   run env SECURITY_FAIL_ON_HIGH_CRITICAL=true PATH="${PATH}" \
-    bash "${FIXTURE_ROOT}/07_run_av_checks.sh"
+    bash "${FIXTURE_ROOT}/08_run_av_checks.sh"
   [ "$status" -eq 1 ]
   [[ "$output" == *"ClamAV detected infected files"* ]]
   [[ "$output" == *"Antivirus (ClamAV) gate failed"* ]]
 }
 
 @test "fails clearly when configured scan target does not exist" {
+  #R035-T01: Run with nonexistent CLAMAV_SCAN_TARGET verifies explicit non-zero failure.
   #R035
   make_clamscan_stub_clean
   run env CLAMAV_SCAN_TARGET="./does-not-exist" PATH="${PATH}" \
-    bash "${FIXTURE_ROOT}/07_run_av_checks.sh"
+    bash "${FIXTURE_ROOT}/08_run_av_checks.sh"
   [ "$status" -eq 1 ]
   [[ "$output" == *"ClamAV scan target not found"* ]]
 }
 
 @test "refreshes signatures once and retries when database files are missing" {
+  #R040-T01: Simulate missing-database error on first scan and clean second scan verifies freshclam --stdout is invoked and scan retry succeeds.
   #R040
   make_clamscan_stub_missing_db_then_clean
   make_freshclam_stub_ok
   export CLAMSCAN_STATE_FILE="${TEST_TMPDIR}/clamscan.state"
   run env CLAMSCAN_STATE_FILE="${CLAMSCAN_STATE_FILE}" PATH="${PATH}" \
-    bash "${FIXTURE_ROOT}/07_run_av_checks.sh"
+    bash "${FIXTURE_ROOT}/08_run_av_checks.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *"attempting one-time database refresh with freshclam --stdout"* ]]
   [[ "$output" == *"Retrying ClamAV repository scan"* ]]
@@ -225,19 +236,21 @@ PY
 }
 
 @test "fails on execution error when clamscan exits greater than one" {
+  #R045-T01: Run with clamscan stub returning exit 2 verifies script exits non-zero with failure message.
   #R045
   make_clamscan_stub_exit_2
   run env PATH="${PATH}" \
-    bash "${FIXTURE_ROOT}/07_run_av_checks.sh"
+    bash "${FIXTURE_ROOT}/08_run_av_checks.sh"
   [ "$status" -eq 1 ]
   [[ "$output" == *"ClamAV failed to execute."* ]]
 }
 
 @test "prints deterministic final completion output with report path" {
+  #R050-T01: Run successful scan path verifies final completion line contains Reports:.
   #R050
   make_clamscan_stub_clean
   run env PATH="${PATH}" \
-    bash "${FIXTURE_ROOT}/07_run_av_checks.sh"
+    bash "${FIXTURE_ROOT}/08_run_av_checks.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *"AV checks completed. Reports:"* ]]
 }

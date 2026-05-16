@@ -11,7 +11,9 @@ import (
 )
 
 func TestHandlerRegisterAndErrorMapping(t *testing.T) {
-	// #R001: Handler decodes register payload and dispatches to service.
+	// #R001-T01: Malformed JSON body returns HTTP 400 with error field.
+	// #R001-T02: Valid register request returns HTTP 200 with credential_id.
+	// #R010-T01: ErrInvalidInput produces HTTP 400 with JSON error field.
 	// #R010: Handler maps invalid JSON and service errors into stable HTTP responses.
 	service := NewService(newMockStore(), handlerAuthorizer{allow: true}, "https://ingest.example.com", false, false)
 	handler := NewHandler(service)
@@ -32,6 +34,8 @@ func TestHandlerRegisterAndErrorMapping(t *testing.T) {
 }
 
 func TestHandlerListAndVerificationLookup(t *testing.T) {
+	// #R005-T01: ListCredentials passes tenant_id and install_id query params to service.
+	// #R005-T02: VerificationLookup passes credential_id URL param to service.
 	// #R005: Handler maps query and path inputs to list and verification lookups.
 	store := newMockStore()
 	recID := "cred_handler"
@@ -51,6 +55,8 @@ func TestHandlerListAndVerificationLookup(t *testing.T) {
 }
 
 func TestHandlerUploadTargetAndConflictMapping(t *testing.T) {
+	// #R015-T01: Valid upload target request returns HTTP 200 with Cache-Control header.
+	// #R010-T04: ErrTenantMismatch produces HTTP 409 with JSON error field.
 	store := newMockStore()
 	recID := "cred_upload_handler"
 	store.records[recID] = CredentialRecord{

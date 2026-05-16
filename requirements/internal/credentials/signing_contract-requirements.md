@@ -4,16 +4,22 @@
 
 Applies to `internal/credentials/signing_contract.go`.
 
-R001  Statement: Publish canonical request-signing contract text for integrators.
-Design: Design: Keep signed header set and canonical string format in exported contract constant.
+R001  Statement: The signing contract constant must enumerate all required request headers and the canonical string construction rule.
+Design: `SigningContract` is an exported string constant that names the five required headers (`X-Manifold-Credential-ID`, `X-Manifold-Timestamp`, `X-Manifold-Batch-ID`, `X-Manifold-Body-SHA256`, `X-Manifold-Signature`) and specifies the canonical string as `METHOD + "\n" + PATH + "\n" + TIMESTAMP + "\n" + BATCH_ID + "\n" + BODY_SHA256`.
 Tests:
-- Add/maintain targeted tests that validate r001 behavior.
+- R001-T01: Verify that `SigningContract` contains the substring `X-Manifold-Credential-ID`.
+- R001-T02: Verify that `SigningContract` contains the substring `X-Manifold-Signature`.
+- R001-T03: Verify that `SigningContract` contains the canonical string field order (`METHOD`, `PATH`, `TIMESTAMP`, `BATCH_ID`, `BODY_SHA256`).
 
-R005  Statement: Document both Ed25519 and HMAC signing semantics.
-Design: Design: Contract text must include algorithm-specific generation and verification notes for both modes.
+R005  Statement: The signing contract must document Ed25519 and HMAC-SHA256 signing and verification semantics.
+Design: `SigningContract` includes an Ed25519 section stating that the signature is `ed25519_sign(canonical_string)` verified with the Valve-registered public key, and an HMAC section stating that the signature is `HMAC-SHA256(secret, canonical_string)` verified with the Valve-managed secret.
 Tests:
-- Add/maintain targeted tests that validate r005 behavior.
+- R005-T01: Verify that `SigningContract` contains the substring `Ed25519` or `ed25519`.
+- R005-T02: Verify that `SigningContract` contains the substring `HMAC` or `hmac`.
+- R005-T03: Verify that `SigningContract` references both a public key (Ed25519) and a secret (HMAC).
 
 ## Changelog
 
+- 2026-05-16: Numbered test bullets with R###-T## scheme.
+- 2026-05-16: Rewrote with concrete content-presence acceptance criteria.
 - 2026-05-10: Added requirements coverage for backend source traceability.

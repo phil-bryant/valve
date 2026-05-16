@@ -13,6 +13,10 @@ teardown() {
 }
 
 @test "fails when pg_dump is missing" {
+  #R001-T01: Verify script exits on unset variable and failing command paths.
+  #R005-T01: Remove pg_dump from PATH verifies clear failure message.
+  #R010-T01: Override field verifies lookup path succeeds.
+  #R015-T01: Force empty 1psa result verifies script exits non-zero.
   #R001 #R005 #R010 #R015
   cat > "${STUB_BIN}/1psa" <<'EOF'
 #!/usr/bin/env bash
@@ -66,6 +70,10 @@ EOF
 }
 
 @test "creates dump and globals artifacts using valve host and port" {
+  #R020-T01: Remove directory verifies recreation with expected permissions.
+  #R025-T01: Verify output .dump file exists with timestamped naming.
+  #R030-T01: Verify globals file exists beside database dump.
+  #R035-T01: Verify file modes and output lines after successful run.
   #R020 #R025 #R030 #R035
   cat > "${STUB_BIN}/1psa" <<'EOF'
 #!/usr/bin/env bash

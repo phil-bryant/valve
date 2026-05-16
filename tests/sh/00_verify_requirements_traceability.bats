@@ -41,6 +41,8 @@ EOF
 #!/usr/bin/env bats
 
 @test "fixture requirement tags" {
+  #R001-T01: First behavior test trace.
+  #R005-T01: Second behavior test trace.
   #R001: First behavior test trace.
   #R005: Second behavior test trace.
   [ 1 -eq 1 ]
@@ -70,6 +72,7 @@ EOF
 #!/usr/bin/env bats
 
 @test "fixture requirement tags" {
+  #R001-T01: First behavior test trace.
   #R001: First behavior test trace.
   [ 1 -eq 1 ]
 }
@@ -112,6 +115,7 @@ package pkg
 import "testing"
 
 func TestExample(t *testing.T) {
+  // #R001-T01: Example Go test tag discovered from package test file.
   // #R001: Example Go test tag discovered from package test file.
   if Example() != "ok" {
     t.Fatalf("unexpected")
@@ -134,6 +138,27 @@ EOF
 }
 
 @test "Traceability tags for verifier requirements" {
+  #R001-T01: Strict mode and temp file setup requirement coverage.
+  #R005-T01: Default recursive requirements discovery coverage.
+  #R010-T01: Requirements-to-source mapping coverage.
+  #R015-T01: Missing mapping/source failure messaging coverage.
+  #R020-T01: Requirement ID parsing coverage.
+  #R025-T01: Source #R tag parsing coverage.
+  #R030-T01: Missing/extra set-difference reporting coverage.
+  #R035-T01: Pass/fail exit semantics coverage.
+  #R040-T01: Numbered script requirements coverage checks.
+  #R045-T01: Numbered requirements scope alignment checks.
+  #R050-T01: Requirement-to-test discovery coverage.
+  #R055-T01: Discovered-test #R tag extraction coverage.
+  #R060-T01: Missing test-traceability ID failure coverage.
+  #R065-T01: Anti-cheat header-bundle and scoped comment enforcement coverage.
+  #R070-T01: Requirements-only mode traceability-skip coverage.
+  #R075-T01: Go package _test.go coverage enforcement in full-run mode.
+  #R080-T01: Go source scoped requirements discover sibling _test.go files.
+  #R085-T01: Repository software files without requirements coverage are auto-detected.
+  #R090-T01: Test file with #R001 but no #R001-T01 triggers numbered-tag failure.
+  #R090-T02: Adding #R001-T01 to test file makes the check pass.
+  #R090-T03: Requirements-only doc skips the numbered-tag check.
   #R001: Strict mode and temp file setup requirement coverage.
   #R005: Default recursive requirements discovery coverage.
   #R010: Requirements-to-source mapping coverage.
@@ -152,6 +177,7 @@ EOF
   #R075: Go package _test.go coverage enforcement in full-run mode.
   #R080: Go source scoped requirements discover sibling _test.go files.
   #R085: Repository software files without requirements coverage are auto-detected.
+  #R090: Numbered test tag enforcement coverage.
   [ 1 -eq 1 ]
 }
 
@@ -266,6 +292,7 @@ package tested
 import "testing"
 
 func TestValue(t *testing.T) {
+  // #R900-T01: Go tested fixture behavior validation.
   // #R900: Go tested fixture behavior validation.
   if Value() != "ok" {
     t.Fatalf("unexpected")

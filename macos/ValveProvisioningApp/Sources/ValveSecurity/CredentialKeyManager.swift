@@ -8,6 +8,8 @@ public protocol CredentialKeyManaging: Sendable
   func storeHMACSecret(_ secret: String, for credentialID: String) throws
 }
 
+// #R001: Generate Ed25519 key pairs and return public key as base64 with raw private key data.
+// #R005: Persist private key and HMAC secret material through keychain store abstraction.
 public struct CredentialKeyManager: CredentialKeyManaging
 { private let keychainStore: any KeychainStoreProtocol
 

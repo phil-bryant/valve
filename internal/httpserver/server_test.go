@@ -22,9 +22,11 @@ func (t testChecker) Ping(_ context.Context) error {
 }
 
 func TestHealthzReturns200AndJSONContract(t *testing.T) {
+	// #R001-T01: Request to any route produces structured log entry with method, path, duration_ms.
+	// #R005-T01: GET /healthz returns HTTP 200 with application/json and ok:true body.
+	// #R010-T01: POST /v1/valve/credentials/register is reachable without a service key.
 	// #R001: Router boots with middleware and serves health endpoint.
-	// #R005: Health probe response matches the OpenAPI application/json
-	// contract used by DAST Schemathesis preflight.
+	// #R005: Health probe response matches the OpenAPI application/json contract.
 	// #R010: Credential route graph uses service-auth middleware in server construction.
 	logger := slog.Default()
 	srv := New(":8090", logger, testChecker{}, &credentials.Handler{}, "svc-key")
@@ -50,6 +52,7 @@ func TestHealthzReturns200AndJSONContract(t *testing.T) {
 }
 
 func TestReadyzFailsWhenDatabaseUnavailable(t *testing.T) {
+	// #R005-T03: GET /readyz returns HTTP 503 with application/json and ok:false when Ping fails.
 	logger := slog.Default()
 	srv := New(":8090", logger, testChecker{err: errors.New("db down")}, &credentials.Handler{}, "svc-key")
 	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
@@ -65,6 +68,9 @@ func TestReadyzFailsWhenDatabaseUnavailable(t *testing.T) {
 }
 
 func TestSecureResponseHeadersAreSetOnEveryRoute(t *testing.T) {
+	// #R015-T01: GET /healthz response includes X-Content-Type-Options: nosniff.
+	// #R015-T02: GET /readyz response includes X-Frame-Options: DENY.
+	// #R015-T03: POST /v1/piston/upload-target response includes Referrer-Policy: no-referrer.
 	// #R015: Every response carries baseline security headers so DAST scans
 	// (and real clients) do not need to rely on browser MIME-sniffing or
 	// framing defaults.
@@ -87,6 +93,7 @@ func TestSecureResponseHeadersAreSetOnEveryRoute(t *testing.T) {
 }
 
 func TestUploadTargetRouteRequiresServiceAuth(t *testing.T) {
+	// #R010-T03: POST /v1/piston/upload-target returns HTTP 401 when service key header is absent.
 	logger := slog.Default()
 	srv := New(":8090", logger, testChecker{}, &credentials.Handler{}, "svc-key")
 	req := httptest.NewRequest(http.MethodPost, "/v1/piston/upload-target", nil)

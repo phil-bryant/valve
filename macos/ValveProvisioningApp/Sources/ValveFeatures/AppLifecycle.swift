@@ -1,5 +1,6 @@
 import AppKit
 
+// #R001: App terminates when last window is closed so launcher scripts return to terminal prompt.
 public enum AppLifecyclePolicy
 { public static let terminateAfterLastWindowClosed = true
 }

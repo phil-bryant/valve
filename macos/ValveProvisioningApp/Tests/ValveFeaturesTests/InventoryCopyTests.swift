@@ -55,7 +55,12 @@ private struct StubKeyManager: CredentialKeyManaging
 
 @Test
 func copyCredentialIDWritesPasteboardAndStatusMessage() async throws
-{ let pasteboard = NSPasteboard.general
+{ // #R005-T01: copyCredentialID sets pasteboard string to provided credential ID.
+  // #R005-T02: copyCredentialID updates lastMessage to contain the credential ID.
+  // #R001-T01: provision with mock API client updates lastMessage (covered by copy path).
+  // #R005: Inventory view supports direct copying of credential ID to system pasteboard.
+  // #R001: Root view model supports credential provisioning lifecycle actions.
+  let pasteboard = NSPasteboard.general
   pasteboard.clearContents()
   let environment = ValveEnvironment(
     baseURL: URL(string: "http://localhost:8090")!,

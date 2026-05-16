@@ -14,6 +14,9 @@ teardown() {
 }
 
 @test "fails when pg_restore is missing" {
+  #R001-T01: Verify script exits on failing command and unset variable paths.
+  #R010-T01: Remove pg_restore from PATH verifies clear failure.
+  #R015-T01: Force empty password response verifies non-zero exit.
   #R001 #R010 #R015
   cat > "${STUB_BIN}/1psa" <<'EOF'
 #!/usr/bin/env bash
@@ -40,6 +43,10 @@ EOF
 }
 
 @test "defaults to latest dump and reports completion path" {
+  #R005-T01: Run without args verifies newest dump is selected.
+  #R020-T01: Run restore with missing globals file verifies restore is refused.
+  #R030-T01: Verify restore order is globals first then database content.
+  #R035-T01: Verify successful run prints completion line with backup path.
   #R005 #R020 #R030 #R035
   old="${FIXTURE_ROOT}/backups/valve_20250101_000000.dump"
   new="${FIXTURE_ROOT}/backups/valve_20250102_000000.dump"
@@ -89,6 +96,7 @@ EOF
 }
 
 @test "fails when matching globals file is missing" {
+  #R020-T01: Run restore with missing globals file verifies restore is refused.
   #R020
   dump_path="${FIXTURE_ROOT}/backups/snapshot.dump"
   touch "$dump_path"
@@ -118,6 +126,7 @@ EOF
 }
 
 @test "refuses restore when ingest schema objects already exist" {
+  #R025-T01: Restore into existing initialized db verifies refusal message.
   #R025
   dump_path="${FIXTURE_ROOT}/backups/snapshot.dump"
   globals_path="${FIXTURE_ROOT}/backups/snapshot_globals.sql"
@@ -202,6 +211,7 @@ EOF
 }
 
 @test "globals restore remains idempotent when role already exists" {
+  #R040-T01: Run restore with globals replay against environment with existing target roles verifies script continues to database restore.
   #R040
   dump_path="${FIXTURE_ROOT}/backups/snapshot.dump"
   globals_path="${FIXTURE_ROOT}/backups/snapshot_globals.sql"
@@ -255,6 +265,7 @@ EOF
 }
 
 @test "globals replay filters unrelated non-valve roles" {
+  #R045-T01: Run restore with mixed globals content verifies unrelated roles are not replayed.
   #R045
   dump_path="${FIXTURE_ROOT}/backups/snapshot.dump"
   globals_path="${FIXTURE_ROOT}/backups/snapshot_globals.sql"

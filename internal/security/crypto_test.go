@@ -6,6 +6,9 @@ import (
 )
 
 func TestGenerateRandomSecretBase64ProducesRequestedByteLength(t *testing.T) {
+	// #R001-T01: Two successive calls return distinct strings.
+	// #R001-T02: Returned string is valid standard base64.
+	// #R001-T03: Decoding returns exactly size bytes.
 	// #R001: Secret generation returns valid base64 payload with requested byte length.
 	secret, err := GenerateRandomSecretBase64(32)
 	if err != nil {
@@ -21,6 +24,9 @@ func TestGenerateRandomSecretBase64ProducesRequestedByteLength(t *testing.T) {
 }
 
 func TestHashSecretHexIsDeterministicAndHasSha256Length(t *testing.T) {
+	// #R005-T01: Same input always produces same output (determinism).
+	// #R005-T02: Output is exactly 64 characters long.
+	// #R005-T04: Two distinct inputs produce distinct digests.
 	// #R005: Hashing is deterministic and SHA-256 sized for persistence checks.
 	a := HashSecretHex("same-input")
 	b := HashSecretHex("same-input")

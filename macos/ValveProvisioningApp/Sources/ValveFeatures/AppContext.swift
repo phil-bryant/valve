@@ -40,6 +40,8 @@ private struct AuditEntry: Codable, Sendable
   let details: String
 }
 
+// #R001: Live application context factory resolving configuration from environment variables.
+// #R005: Local audit logger appending JSONL entries to Application Support.
 public struct AppContext: Sendable
 { public let environment: ValveEnvironment
   public let apiClient: any ValveAPIClientProtocol

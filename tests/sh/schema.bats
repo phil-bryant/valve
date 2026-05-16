@@ -1,6 +1,9 @@
 #!/usr/bin/env bats
 
 @test "R001,R005,R010: schema includes core tables and indexes" {
+  #R001-T01: valve_credentials table exists with constrained lifecycle columns.
+  #R005-T01: tenant_install index exists on valve_credentials.
+  #R010-T01: valve_audit_log table exists with action and metadata columns.
   #R001: Credential table includes constrained lifecycle and identity columns.
   #R005: Schema defines indexes for tenant/install and status access paths.
   #R010: Schema defines audit log table with metadata payload.

@@ -264,6 +264,17 @@ for source_file in source_files:
         add_path(f"tests/sh/{stem}.bats", "default")
     if ext == ".swift":
         collect_swift_lane("Tests", "default", stem=stem)
+        # Also search for SwiftPM package-relative Tests/ directory.
+        source_path = os.path.join(repo_root, source_norm) if not os.path.isabs(source_norm) else source_norm
+        pkg_dir = os.path.dirname(source_path)
+        while pkg_dir and pkg_dir != os.path.dirname(pkg_dir):
+            if os.path.isfile(os.path.join(pkg_dir, "Package.swift")):
+                pkg_tests = os.path.join(pkg_dir, "Tests")
+                if os.path.isdir(pkg_tests):
+                    pkg_rel = os.path.relpath(pkg_tests, repo_root)
+                    collect_swift_lane(pkg_rel, "default", stem=stem)
+                break
+            pkg_dir = os.path.dirname(pkg_dir)
     if ext == ".go":
         collect_go_package_tests(source_file)
 
@@ -311,6 +322,66 @@ discover_combined_tests_for_requirements() {
     ui_tests_file="$(mktemp)"
     discover_test_files_for_requirements "$requirements_file" "$source_list_file" "$default_tests_file" "$ui_tests_file"
     cat "$default_tests_file" "$ui_tests_file" | sort -u > "$combined_tests_file"
+}
+
+extract_numbered_test_ids() {
+    local test_file="$1" out_file="$2"
+    awk '{
+        while (match($0, /#R[0-9]{3}(-[0-9]{3})*-T[0-9]{2}/)) {
+            tag = substr($0, RSTART + 1, RLENGTH - 1)
+            print tag
+            $0 = substr($0, RSTART + RLENGTH)
+        }
+    }' "$test_file" | sort -u > "$out_file"
+}
+
+collect_numbered_test_ids_from_list() {
+    local test_list_file="$1" out_file="$2"
+    local test_file tmp_ids
+    tmp_ids="$(mktemp)"
+    : > "$tmp_ids"
+    if [ ! -s "$test_list_file" ]; then
+        : > "$out_file"
+        return 0
+    fi
+    while IFS= read -r test_file; do
+        [ -n "$test_file" ] || continue
+        [ -f "$test_file" ] || continue
+        local one_file_ids
+        one_file_ids="$(mktemp)"
+        extract_numbered_test_ids "$test_file" "$one_file_ids"
+        cat "$one_file_ids" >> "$tmp_ids"
+    done < "$test_list_file"
+    sort -u "$tmp_ids" > "$out_file"
+}
+
+#R090: Enforce numbered test tags (#Rxxx-T##) in discovered test files for each requirement ID.
+verify_numbered_test_traceability() {
+    local requirements_file="$1" source_list_file="$2"
+    local req_ids_file combined_tests_file numbered_test_ids_file missing_file
+    req_ids_file="$(mktemp)"
+    combined_tests_file="$(mktemp)"
+    numbered_test_ids_file="$(mktemp)"
+    missing_file="$(mktemp)"
+    extract_requirement_ids "$requirements_file" "$req_ids_file"
+    discover_combined_tests_for_requirements "$requirements_file" "$source_list_file" "$combined_tests_file"
+    collect_numbered_test_ids_from_list "$combined_tests_file" "$numbered_test_ids_file"
+    : > "$missing_file"
+    while IFS= read -r req_id; do
+        [ -n "$req_id" ] || continue
+        if awk -v id="$req_id" 'index($0, id "-T") == 1 { found=1 } END { exit found ? 0 : 1 }' "$numbered_test_ids_file"; then
+            continue
+        fi
+        printf "%s\n" "$req_id" >> "$missing_file"
+    done < "$req_ids_file"
+    sort -u "$missing_file" -o "$missing_file"
+    if [ ! -s "$missing_file" ]; then
+        echo "✅ PASS (numbered-test-tags): ${requirements_file}"
+        return 0
+    fi
+    echo "❌ FAIL (numbered-test-tags): missing #Rxxx-T## tags in test files for requirement IDs in ${requirements_file}:"
+    sed 's/^/  - /' "$missing_file"
+    return 1
 }
 
 collect_ids_from_test_list() {
@@ -508,6 +579,10 @@ verify_single_pair_with_tests() {
     if ! verify_requirements_test_traceability "$requirements_file" "$source_list_file"; then
         status=1
     fi
+    #R090: Enforce numbered test tags for each requirement ID.
+    if ! verify_numbered_test_traceability "$requirements_file" "$source_list_file"; then
+        status=1
+    fi
     [ "$status" -eq 0 ]
 }
 
@@ -559,6 +634,10 @@ verify_requirements_file_sources() {
         fi
     done < "$source_list_file"
     if ! verify_requirements_test_traceability "$requirements_file" "$source_list_file"; then
+        file_fail=1
+    fi
+    #R090: Enforce numbered test tags for each requirement ID.
+    if ! verify_numbered_test_traceability "$requirements_file" "$source_list_file"; then
         file_fail=1
     fi
     if [ "$found_source" -eq 0 ]; then
@@ -694,7 +773,7 @@ excluded_real = ""
 if excluded_path:
     excluded_real = str(Path(excluded_path).resolve())
 allowed_exts = {".sh", ".py", ".go", ".swift", ".sql", ".c", ".cc", ".cpp", ".cxx", ".m", ".mm", ".h", ".hpp"}
-excluded_dirs = {".git", ".cursor", "requirements", "tests", "bin", "backups", ".security-reports", ".gocache", ".gomodcache", ".build"}
+excluded_dirs = {".git", ".cursor", "requirements", "tests", "Tests", "bin", "backups", ".security-reports", ".gocache", ".gomodcache", ".build"}
 excluded_relative_paths = {"storage/schema.sql"}
 excluded_relative_prefixes = ("storage/sql/",)
 files = set()

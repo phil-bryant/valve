@@ -1,10 +1,12 @@
 import Foundation
 
+// #R001: Credential mode enum with snake_case raw values matching Valve API wire format.
 public enum CredentialMode: String, Codable, CaseIterable, Sendable
 { case ed25519
   case hmac_sha256
 }
 
+// #R005: Request and response models with JSON coding keys matching Valve API snake_case contract.
 public struct RegisterCredentialRequest: Codable, Sendable
 { public let tenantID: String
   public let actorUserID: String

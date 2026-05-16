@@ -94,6 +94,7 @@ func ValidateRotate(req RotateRequest, allowEmptyActor bool, hmacEnabled bool) e
 	return nil
 }
 
+// #R015: Validate upload target request identifiers before service dispatch.
 func ValidateUploadTargetRequest(req UploadTargetRequest) error {
 	if req.TenantID == "" {
 		return errors.New("tenant_id is required")

@@ -82,6 +82,7 @@ func (h *Handler) VerificationLookup(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// #R015: Set Cache-Control header from TTL and dispatch upload target requests.
 func (h *Handler) UploadTarget(w http.ResponseWriter, r *http.Request) {
 	var req UploadTargetRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

@@ -1,5 +1,6 @@
 import Foundation
 
+// #R001: API error cases covering URL construction, HTTP status, decoding, and transport failures.
 public enum APIError: Error, LocalizedError, Sendable
 { case invalidURL
   case requestFailed(Int, String)

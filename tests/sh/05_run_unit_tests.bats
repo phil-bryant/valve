@@ -48,6 +48,16 @@ EOF
   chmod +x "${STUB_BIN}/bats"
 }
 
+make_swift_stub() {
+  local exit_code="${1:-0}"
+  cat > "${STUB_BIN}/swift" <<EOF
+#!/usr/bin/env bash
+echo "swift \$*" >> "${CALLS_LOG}"
+exit ${exit_code}
+EOF
+  chmod +x "${STUB_BIN}/swift"
+}
+
 make_1psa_stub() {
   cat > "${STUB_BIN}/1psa" <<'EOF'
 #!/usr/bin/env bash
@@ -97,6 +107,8 @@ SELECT plan(1);
 SELECT ok(true, 'stub');
 SELECT * FROM finish();
 EOF
+  mkdir -p "${FIXTURE_ROOT}/macos/ValveProvisioningApp"
+  printf '// swift-tools-version: 5.9\n' > "${FIXTURE_ROOT}/macos/ValveProvisioningApp/Package.swift"
 }
 
 teardown() {
@@ -109,10 +121,12 @@ setup() {
   make_psql_stub 0
   make_go_stub 0
   make_bats_stub 0
+  make_swift_stub 0
   make_1psa_stub
 }
 
 @test "fails on first psql error" {
+  #R001-T01: Force psql to fail verifies script exits non-zero.
   #R001
   make_psql_stub 1
   run bash "${FIXTURE_ROOT}/05_run_unit_tests.sh"
@@ -120,6 +134,7 @@ setup() {
 }
 
 @test "fails when 1psa is unavailable" {
+  #R005-T01: Run with 1psa unavailable verifies explicit non-zero failure output.
   #R005
   export PATH="/usr/bin:/bin:/usr/sbin:/sbin"
   run bash "${FIXTURE_ROOT}/05_run_unit_tests.sh"
@@ -149,6 +164,7 @@ setup() {
 }
 
 @test "fails when psql is unavailable" {
+  #R010-T01: Run with psql missing verifies explicit non-zero failure output.
   #R010
   rm -f "${STUB_BIN}/psql"
   make_1psa_stub
@@ -182,7 +198,50 @@ setup() {
   [[ "$output" == *"bats is required"* ]]
 }
 
+@test "fails when swift is unavailable" {
+  #R010-T04: Run with swift missing from PATH verifies explicit non-zero failure output.
+  #R037-T02: Force missing Swift package directory verifies explicit non-zero failure output.
+  #R010 #R037
+  rm -f "${STUB_BIN}/swift"
+  make_psql_stub 0
+  make_go_stub 0
+  make_bats_stub 0
+  make_1psa_stub
+  ln -sf /bin/bash "${STUB_BIN}/bash"
+  ln -sf /usr/bin/env "${STUB_BIN}/env"
+  export PATH="${STUB_BIN}:/bin:/usr/sbin:/sbin"
+  run bash "${FIXTURE_ROOT}/05_run_unit_tests.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"swift is required"* ]]
+}
+
+@test "outputs header lines before each test section" {
+  #R030-T05: Verify output includes header lines before each test section.
+  #R037-T01: Verify Swift test invocation uses swift test --package-path.
+  #R030 #R037
+  make_psql_stub 0
+  make_go_stub 0 "with-tests"
+  make_bats_stub 0
+  make_1psa_stub
+  cat > "${STUB_BIN}/swift" <<'EOF'
+#!/usr/bin/env bash
+echo "swift $*" >> "${CALLS_LOG}"
+exit 0
+EOF
+  chmod +x "${STUB_BIN}/swift"
+  mkdir -p "${FIXTURE_ROOT}/macos/ValveProvisioningApp"
+  printf '// swift-tools-version: 5.9\n' > "${FIXTURE_ROOT}/macos/ValveProvisioningApp/Package.swift"
+  run bash "${FIXTURE_ROOT}/05_run_unit_tests.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"▶ Running SQL unit tests"* ]]
+  [[ "$output" == *"▶ Running Go unit tests"* ]]
+  [[ "$output" == *"▶ Running Bats shell tests"* ]]
+  [[ "$output" == *"▶ Running Swift package tests"* ]]
+  grep -F "swift test --package-path" "${CALLS_LOG}"
+}
+
 @test "resolves SQL unit-test path relative to script location" {
+  #R015-T01: Run from non-repo cwd verifies SQL unit-test path resolves correctly.
   #R015
   run bash "${FIXTURE_ROOT}/05_run_unit_tests.sh"
   [ "$status" -eq 0 ]
@@ -190,6 +249,7 @@ setup() {
 }
 
 @test "fails when SQL unit-test file is missing" {
+  #R020-T01: Move SQL test file out of place verifies explicit non-zero failure output.
   #R020
   mv "${FIXTURE_ROOT}/storage/sql/unit/ingest_schema_pgtap.sql" \
     "${FIXTURE_ROOT}/storage/sql/unit/ingest_schema_pgtap.sql.trash"
@@ -199,6 +259,7 @@ setup() {
 }
 
 @test "creates pgtap extension before running SQL unit tests" {
+  #R025-T01: Verify script invokes extension-create SQL before test-file execution.
   #R025
   run bash "${FIXTURE_ROOT}/05_run_unit_tests.sh"
   [ "$status" -eq 0 ]
@@ -211,6 +272,7 @@ setup() {
 }
 
 @test "runs SQL unit tests with fail-fast psql options" {
+  #R030-T01: Verify test invocation includes ON_ERROR_STOP=1, -P pager=off, VALVE_SCHEMA, and SQL test file path.
   #R030
   run bash "${FIXTURE_ROOT}/05_run_unit_tests.sh"
   [ "$status" -eq 0 ]
@@ -262,6 +324,7 @@ setup() {
 }
 
 @test "fails when go test output includes packages with no test files" {
+  #R032-T01: Emit simulated go test output with no test files entries verifies explicit non-zero failure.
   #R032
   make_go_stub 0 "no-tests"
   run bash "${FIXTURE_ROOT}/05_run_unit_tests.sh"
@@ -278,6 +341,7 @@ setup() {
 }
 
 @test "emits a single pass line after successful SQL and Go unit tests" {
+  #R035-T01: Verify successful run emits a single PASS line.
   #R035
   make_go_stub 0 "with-tests"
   make_bats_stub 0

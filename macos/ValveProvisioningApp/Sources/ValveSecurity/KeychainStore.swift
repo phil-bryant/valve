@@ -18,6 +18,8 @@ public enum KeychainError: Error, LocalizedError, Sendable
   }
 }
 
+// #R001: Persist arbitrary data to macOS Keychain under service-scoped account key.
+// #R005: Load previously persisted data, returning nil when item does not exist.
 public struct KeychainStore: KeychainStoreProtocol
 { private let serviceName: String
 

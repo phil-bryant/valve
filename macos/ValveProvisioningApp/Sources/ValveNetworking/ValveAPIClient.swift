@@ -1,6 +1,7 @@
 import Foundation
 import ValveDomain
 
+// #R001: Protocol-based API client contract for all credential lifecycle operations and health probes.
 public protocol ValveAPIClientProtocol: Sendable
 { func registerCredential(_ request: RegisterCredentialRequest) async throws -> RegisterCredentialResponse
   func revokeCredential(_ request: RevokeCredentialRequest) async throws -> RevokeCredentialResponse
@@ -98,6 +99,7 @@ public struct ValveAPIClient: ValveAPIClientProtocol
     return value
   }
 
+  // #R005: Map non-2xx HTTP responses to structured APIError.requestFailed with server error message.
   private func decodeResponse<T: Decodable>(data: Data, response: URLResponse, successType: T.Type) throws -> T
   { guard let http = response as? HTTPURLResponse else { throw APIError.transportError("Missing HTTP response.") }
     let value: T

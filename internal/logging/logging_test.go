@@ -8,6 +8,8 @@ import (
 )
 
 func TestNewLoggerWritesStructuredJSONToStdout(t *testing.T) {
+	// #R001-T01: NewLogger returns a non-nil logger.
+	// #R001-T02: Info level message produces JSON-parseable line on stdout.
 	// #R001: Logger emits JSON structure to stdout for runtime observability.
 	oldStdout := os.Stdout
 	reader, writer, err := os.Pipe()

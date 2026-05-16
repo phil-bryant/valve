@@ -84,6 +84,7 @@ func parseIntOrDefault(key string, fallback int) int {
 	return parsed
 }
 
+// #R015: Parse CSV and tenant-route env vars into typed collections, skipping blank entries.
 func parseCSV(value string) []string {
 	if value == "" {
 		return nil

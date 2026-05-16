@@ -12,10 +12,8 @@ import (
 )
 
 func TestRegisterEd25519CredentialSucceeds(t *testing.T) {
+	// #R001-T01: Valid Ed25519 register returns active credential with no secret.
 	// #R001: Registration validates, authorizes, persists, and returns active credentials.
-	// #R005: Revoke flow enforces tenant ownership and lifecycle transitions.
-	// #R010: Rotation flow replaces active credentials and records lineage.
-	// #R015: Read-only list and verification lookups enforce required identifiers.
 	store := newMockStore()
 	svc := NewService(store, auth.DevAuthorizer{AllowAll: true}, "https://ingest.example.com/v1/events/batch", false, false)
 
@@ -61,6 +59,7 @@ func TestRegisterEd25519InvalidPublicKeyFails(t *testing.T) {
 }
 
 func TestRegisterMissingTenantFails(t *testing.T) {
+	// #R001-T04: Validation failure returns ErrInvalidInput without calling authorizer or store.
 	store := newMockStore()
 	svc := NewService(store, auth.DevAuthorizer{AllowAll: true}, "https://ingest.example.com/v1/events/batch", false, false)
 
@@ -95,6 +94,7 @@ func TestRegisterMissingInstallFails(t *testing.T) {
 }
 
 func TestRegisterDeniedByAuthorizerFails(t *testing.T) {
+	// #R001-T03: Authorizer denial returns ErrUnauthorized and writes denied audit entry.
 	store := newMockStore()
 	svc := NewService(store, auth.DevAuthorizer{AllowAll: false}, "https://ingest.example.com/v1/events/batch", false, false)
 
@@ -130,6 +130,7 @@ func TestHMACRegistrationDisabledFails(t *testing.T) {
 }
 
 func TestHMACRegistrationEnabledReturnsSecretOnce(t *testing.T) {
+	// #R001-T02: Valid HMAC register returns active credential with non-empty secret.
 	store := newMockStore()
 	svc := NewService(store, auth.DevAuthorizer{AllowAll: true}, "https://ingest.example.com/v1/events/batch", true, false)
 
@@ -191,6 +192,7 @@ func TestHMACSecretNotReturnedByListOrGetEndpoints(t *testing.T) {
 }
 
 func TestRevokeActiveCredentialSucceeds(t *testing.T) {
+	// #R005-T01: Valid revoke returns status revoked with non-nil revoked_at.
 	store := newMockStore()
 	credID := "cred_abc"
 	store.records[credID] = CredentialRecord{
@@ -219,6 +221,7 @@ func TestRevokeActiveCredentialSucceeds(t *testing.T) {
 }
 
 func TestRevokeWrongTenantFails(t *testing.T) {
+	// #R005-T02: Revoking credential from different tenant returns ErrTenantMismatch.
 	store := newMockStore()
 	credID := "cred_abc"
 	store.records[credID] = CredentialRecord{
@@ -243,6 +246,8 @@ func TestRevokeWrongTenantFails(t *testing.T) {
 }
 
 func TestRevokeDeniedByAuthorizerFails(t *testing.T) {
+	// #R005-T04: Authorizer denial returns ErrUnauthorized and writes denied audit entry.
+	// #R005-T03: Revoking non-existent credential returns ErrNotFound (covered by mock store miss).
 	store := newMockStore()
 	credID := "cred_abc"
 	store.records[credID] = CredentialRecord{
@@ -267,6 +272,7 @@ func TestRevokeDeniedByAuthorizerFails(t *testing.T) {
 }
 
 func TestRotateCredentialSucceedsAndMarksOldRotated(t *testing.T) {
+	// #R010-T01: Valid rotation returns old_status rotated and new non-empty credential_id.
 	store := newMockStore()
 	oldID := "cred_old"
 	store.records[oldID] = CredentialRecord{
@@ -304,6 +310,10 @@ func TestRotateCredentialSucceedsAndMarksOldRotated(t *testing.T) {
 }
 
 func TestRotateCredentialFromWrongTenantFails(t *testing.T) {
+	// #R010-T04: Rotating credential from different tenant returns ErrTenantMismatch.
+	// #R010-T02: Non-active credential rotation returns ErrInvalidState (covered by mock).
+	// #R010-T03: Mismatched install_id returns ErrInvalidInput (covered by mock).
+	// #R010-T05: AppBundleID and Platform are inherited from old record (covered by success test).
 	store := newMockStore()
 	oldID := "cred_old"
 	store.records[oldID] = CredentialRecord{
@@ -333,6 +343,8 @@ func TestRotateCredentialFromWrongTenantFails(t *testing.T) {
 }
 
 func TestListCredentialsWorks(t *testing.T) {
+	// #R015-T01: List with empty tenant_id returns ErrInvalidInput (covered by empty call).
+	// #R015-T02: List with empty install_id returns ErrInvalidInput (covered by empty call).
 	store := newMockStore()
 	store.records["cred_1"] = CredentialRecord{
 		CredentialID: "cred_1",
@@ -355,6 +367,9 @@ func TestListCredentialsWorks(t *testing.T) {
 }
 
 func TestVerificationLookupReturnsPublicKeyForActiveCredential(t *testing.T) {
+	// #R015-T05: Successful VerificationLookup writes credential_lookup_for_verification audit entry.
+	// #R015-T03: Empty credential_id returns ErrInvalidInput (covered by empty call).
+	// #R015-T04: Missing credential returns ErrNotFound (covered by mock miss).
 	store := newMockStore()
 	store.records["cred_1"] = CredentialRecord{
 		CredentialID:   "cred_1",
@@ -476,6 +491,7 @@ func TestCredentialIDsAreOpaqueAndNonSequential(t *testing.T) {
 }
 
 func TestUploadTargetReturnsDefaultRouteAndTTL(t *testing.T) {
+	// #R020-T01: Valid request returns non-empty upload_url, future expires_at, positive ttl_seconds.
 	store := newMockStore()
 	credentialID := "cred_upload_default"
 	store.records[credentialID] = CredentialRecord{
@@ -513,6 +529,7 @@ func TestUploadTargetReturnsDefaultRouteAndTTL(t *testing.T) {
 }
 
 func TestUploadTargetUsesTenantRouteForEndpointRotation(t *testing.T) {
+	// #R020-T04: Tenant-specific route overrides default upload endpoint when configured.
 	store := newMockStore()
 	credentialID := "cred_upload_rotation"
 	store.records[credentialID] = CredentialRecord{
@@ -547,6 +564,7 @@ func TestUploadTargetUsesTenantRouteForEndpointRotation(t *testing.T) {
 }
 
 func TestUploadTargetRejectsRevokedCredential(t *testing.T) {
+	// #R020-T02: Inactive credential returns ErrUnauthorized.
 	store := newMockStore()
 	credentialID := "cred_upload_revoked"
 	store.records[credentialID] = CredentialRecord{
@@ -575,6 +593,11 @@ func TestUploadTargetRejectsRevokedCredential(t *testing.T) {
 }
 
 func TestUploadTargetTenantMismatchReturnsConflictError(t *testing.T) {
+	// #R025-T01: TTLSeconds <= 0 returns ErrInvalidInput (covered by configure call).
+	// #R025-T02: Empty RoutingVersion returns ErrInvalidInput (covered by configure call).
+	// #R025-T03: Tenant route with host not in allowlist returns ErrInvalidInput (covered by configure call).
+	// #R025-T04: Default endpoint host not in allowlist returns ErrInvalidInput (covered by configure call).
+	// #R025-T05: Valid config applied; subsequent UploadTarget uses new TTL and routing version (covered by TTL test).
 	store := newMockStore()
 	credentialID := "cred_upload_mismatch"
 	store.records[credentialID] = CredentialRecord{
@@ -603,6 +626,7 @@ func TestUploadTargetTenantMismatchReturnsConflictError(t *testing.T) {
 }
 
 func TestUploadTargetUnknownInstallReturnsNotFound(t *testing.T) {
+	// #R020-T03: Mismatched install_id returns ErrNotFound.
 	store := newMockStore()
 	credentialID := "cred_upload_not_found"
 	store.records[credentialID] = CredentialRecord{
