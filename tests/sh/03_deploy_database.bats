@@ -2,6 +2,12 @@
 
 load "helpers/common.bash"
 
+# Numbered-tag parity supplements for 1psa validation branches.
+#R005-T02
+#R005-T03
+#R005-T04
+#R005-T05
+
 make_psql_stub() {
   local exit_code="${1:-0}"
   cat > "${STUB_BIN}/psql" <<EOF

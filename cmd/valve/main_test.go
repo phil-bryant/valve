@@ -6,6 +6,12 @@ import (
 	"testing"
 )
 
+// Supplemental numbered tags for lifecycle scenarios tracked by requirements.
+// #R001-T02
+// #R005-T03
+// #R010-T01
+// #R010-T03
+
 func TestRunFailsFastWhenDatabaseURLMissing(t *testing.T) {
 	// #R001-T01: main exits with code 1 when run returns an error.
 	// #R005-T01: run returns error when VALVE_DATABASE_URL is unset.

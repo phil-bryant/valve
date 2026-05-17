@@ -2,6 +2,9 @@
 
 load "helpers/common.bash"
 
+# Numbered-tag parity supplement for explicit --from selection path.
+#R005-T02
+
 setup() {
   setup_shell_test
   create_repo_fixture

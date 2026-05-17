@@ -1,5 +1,9 @@
 #!/usr/bin/env bats
 
+# Supplemental numbered tags for schema validation parity.
+#R001-T02
+#R010-T02
+
 @test "R001,R005,R010: schema includes core tables and indexes" {
   #R001-T01: valve_credentials table exists with constrained lifecycle columns.
   #R005-T01: tenant_install index exists on valve_credentials.

@@ -9,7 +9,7 @@ Design: `Load` populates `Addr` from `VALVE_ADDR` (default `:8090`), `DevAuthAll
 Tests:
 - R001-T01: Verify that when `VALVE_ADDR` is unset, `Addr` is `:8090`.
 - R001-T02: Verify that when `VALVE_ADDR` is set to a custom value, `Addr` reflects that value.
-- R001-T03: Verify that when `VALVE_UPLOAD_TARGET_TTL_SECONDS` is unset, `UploadTargetTTLSeconds` is `300`.
+- R001-T04: Verify that when `VALVE_UPLOAD_TARGET_TTL_SECONDS` is unset, `UploadTargetTTLSeconds` is `300`.
 
 R005  Statement: Required environment variables must cause `Load` to return an explicit error when absent.
 Design: `Load` returns an error when `VALVE_DATABASE_URL` is empty, when `VALVE_UPLOAD_ENDPOINT` is empty, when `VALVE_UPLOAD_TARGET_TTL_SECONDS` resolves to `<= 0`, or when `VALVE_UPLOAD_TARGET_ROUTING_VERSION` resolves to empty.

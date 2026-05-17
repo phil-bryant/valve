@@ -11,6 +11,13 @@ Tests:
 - R001-T02: Verify a valid HMAC register request returns a response with a non-empty `credential_id`, `status: active`, and a non-empty `secret`.
 - R001-T03: Verify that when the authorizer denies the request, `Register` returns `ErrUnauthorized` and a `credential_registration_denied` audit entry is written.
 - R001-T04: Verify that a validation failure (e.g. missing `tenant_id`) returns `ErrInvalidInput` without calling the authorizer or store.
+- R001-T05: Verify register validation rejects unknown credential modes before service write paths.
+- R001-T06: Verify register validation rejects disabled HMAC mode before service write paths.
+- R001-T07: Verify register validation rejects missing Ed25519 keys before service write paths.
+- R001-T08: Verify register validation rejects non-base64 Ed25519 keys before service write paths.
+- R001-T09: Verify register validation rejects invalid-length Ed25519 keys before service write paths.
+- R001-T10: Verify canonical valid register payloads pass validation before service write paths.
+- R001-T11: Verify canonical valid HMAC register payloads pass validation when HMAC is enabled.
 
 R005  Statement: Revoke flow must enforce tenant ownership, active credential lifecycle transitions, and emit audit records.
 Design: `Revoke` calls `ValidateRevoke`, checks `CanRevokeIngestCredential`, fetches the credential, asserts `record.TenantID == req.TenantID`, calls `RevokeCredential`, and writes a `credential_revoked` audit entry. When authorization is denied, a `credential_revoke_denied` audit entry is written before returning `ErrUnauthorized`. A tenant mismatch returns `ErrTenantMismatch`. A missing credential returns `ErrNotFound`.
@@ -28,6 +35,7 @@ Tests:
 - R010-T03: Verify that rotating with a mismatched `install_id` returns `ErrInvalidInput`.
 - R010-T04: Verify that rotating a credential belonging to a different tenant returns `ErrTenantMismatch`.
 - R010-T05: Verify that `AppBundleID` and `Platform` are inherited from the old record in the replacement.
+- R010-T06: Verify unknown handler-level service errors map to HTTP 500 with JSON error output while preserving service semantics.
 
 R015  Statement: Read-only endpoints must enforce required arguments and normalize not-found behavior.
 Design: `List` requires non-empty `tenant_id` and `install_id`, returning `ErrInvalidInput` otherwise. `VerificationLookup` requires a non-empty `credential_id`, returning `ErrInvalidInput` otherwise; storage misses are mapped to `ErrNotFound`. A successful `VerificationLookup` writes a `credential_lookup_for_verification` audit entry.

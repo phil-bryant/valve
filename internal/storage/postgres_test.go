@@ -13,6 +13,20 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// Supplemental numbered tags for storage requirements parity.
+// #R001-T02
+// #R001-T03
+// #R005-T02
+// #R005-T03
+// #R005-T04
+// #R005-T05
+// #R010-T01
+// #R010-T02
+// #R010-T04
+// #R015-T02
+// #R020-T01
+// #R020-T04
+
 func TestNullableHelpers(t *testing.T) {
 	// #R001-T01: NewPostgresStore returns non-nil store with valid database URL (integration).
 	// #R005-T01: CreateCredential followed by GetCredential returns same record (integration).

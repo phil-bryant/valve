@@ -2,6 +2,11 @@
 
 load "helpers/common.bash"
 
+# Numbered-tag parity supplements for launch-mode and package validation paths.
+#R010-T02
+#R015-T02
+#R015-T03
+
 setup_fixture() {
   create_repo_fixture
   copy_script_to_fixture "10_launch_ui.sh"

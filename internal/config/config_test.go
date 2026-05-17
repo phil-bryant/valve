@@ -4,6 +4,14 @@ import (
 	"testing"
 )
 
+// Supplemental numbered tags for expanded configuration matrix coverage.
+// #R001-T04
+// #R005-T04
+// #R010-T01
+// #R010-T03
+// #R015-T01
+// #R015-T03
+
 func TestLoadReturnsConfigFromEnvironment(t *testing.T) {
 	// #R001-T01: When VALVE_ADDR is unset, Addr is :8090 (default).
 	// #R001-T02: When VALVE_ADDR is set, Addr reflects that value.

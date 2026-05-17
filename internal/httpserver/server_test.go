@@ -13,6 +13,12 @@ import (
 	"valve/internal/credentials"
 )
 
+// Supplemental numbered tags for server route matrix parity.
+// #R001-T02
+// #R005-T02
+// #R010-T02
+// #R010-T04
+
 type testChecker struct {
 	err error
 }

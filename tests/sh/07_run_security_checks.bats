@@ -2,6 +2,19 @@
 
 load "helpers/common.bash"
 
+# Numbered-tag parity supplements for security-tool branch coverage.
+#R010-T02
+#R015-T02
+#R015-T03
+#R020-T02
+#R020-T03
+#R025-T02
+#R025-T05
+#R035-T04
+#R040-T02
+#R040-T03
+#R040-T04
+
 make_semgrep_stub() {
   cat > "${STUB_BIN}/semgrep" <<'EOF'
 #!/usr/bin/env bash

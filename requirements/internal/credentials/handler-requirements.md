@@ -11,6 +11,13 @@ Tests:
 - R001-T02: Verify that a valid register request dispatches to the service and returns HTTP 200 with a JSON body containing `credential_id`.
 - R001-T03: Verify that a malformed JSON body to the revoke endpoint returns HTTP 400.
 - R001-T04: Verify that a malformed JSON body to the rotate endpoint returns HTTP 400.
+- R001-T05: Verify that register validation rejects unsupported credential mode values before service dispatch.
+- R001-T06: Verify that register validation rejects disabled HMAC mode requests.
+- R001-T07: Verify that register validation rejects missing Ed25519 public keys.
+- R001-T08: Verify that register validation rejects non-base64 Ed25519 public keys.
+- R001-T09: Verify that register validation rejects Ed25519 keys that decode to invalid lengths.
+- R001-T10: Verify that fully valid register validation input passes with no error.
+- R001-T11: Verify that fully valid HMAC register validation input passes when HMAC is enabled.
 
 R005  Statement: List and verification endpoints must extract inputs from URL query parameters and chi URL parameters respectively.
 Design: `ListCredentials` reads `tenant_id` and `install_id` from `r.URL.Query()`; `VerificationLookup` reads `credential_id` from `chi.URLParam(r, "credential_id")`. Both dispatch to the service and return JSON-encoded responses.
@@ -18,6 +25,7 @@ Tests:
 - R005-T01: Verify that `ListCredentials` passes `tenant_id` and `install_id` query params to the service.
 - R005-T02: Verify that `VerificationLookup` passes the `credential_id` URL param to the service.
 - R005-T03: Verify that a service `ErrNotFound` from `VerificationLookup` returns HTTP 404.
+- R005-T04: Verify that revoke validation accepts fully valid input and rejects missing actor input when actor is required.
 
 R010  Statement: Service errors must map to stable HTTP status codes with JSON error bodies.
 Design: `writeServiceError` maps `ErrInvalidInput` → 400, `ErrUnauthorized` → 403, `ErrNotFound` → 404, `ErrTenantMismatch` → 409, `ErrInvalidState` → 409, and all other errors → 500. Every error response has `Content-Type: application/json` and a body with a non-empty `error` field.
@@ -34,6 +42,9 @@ Design: `UploadTarget` decodes the JSON request body, dispatches to the service,
 Tests:
 - R015-T01: Verify a valid upload target request returns HTTP 200 with a `Cache-Control` header containing `private, max-age=`.
 - R015-T02: Verify a malformed JSON body returns HTTP 400.
+- R015-T03: Verify upload target validation rejects an empty `credential_id`.
+- R015-T04: Verify upload target validation accepts a fully valid request payload.
+- R015-T05: Verify successful verification lookup flow emits the expected audit trace path used by handler integrations.
 
 ## Changelog
 

@@ -2,6 +2,17 @@
 
 load "helpers/common.bash"
 
+# Numbered-tag parity supplements for missing workflow branches.
+#R005-T02
+#R005-T03
+#R005-T04
+#R010-T02
+#R010-T03
+#R030-T02
+#R030-T03
+#R030-T04
+#R032-T02
+
 make_psql_stub() {
   local exit_code="${1:-0}"
   cat > "${STUB_BIN}/psql" <<EOF

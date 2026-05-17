@@ -2,6 +2,10 @@ import Foundation
 import Testing
 import ValveDomain
 
+// Supplemental numbered tags for register validation parity.
+// #R001-T01
+// #R001-T02
+
 @Test
 func registerValidationAcceptsValidRequest() throws
 { // #R001-T04: Fully valid register request does not throw.

@@ -2,6 +2,9 @@ import Foundation
 import Testing
 import ValveFeatures
 
+// Supplemental numbered tag for environment override parity.
+// #R001-T02
+
 @Test
 func liveContextDefaultsToValvePort8090() async throws
 { // #R001-T01: liveFromEnvironment() with no env overrides produces context with base URL port 8090.

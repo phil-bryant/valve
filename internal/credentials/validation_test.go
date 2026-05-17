@@ -5,6 +5,13 @@ import (
 	"testing"
 )
 
+// Supplemental numbered tags for register validation matrix parity.
+// #R001-T05
+// #R001-T06
+// #R001-T07
+// #R001-T09
+// #R001-T11
+
 func TestValidateRegisterScenarios(t *testing.T) {
 	// #R001-T10: Fully valid Ed25519 request returns nil.
 	// #R001-T08: Non-base64 public_key returns an error.

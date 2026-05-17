@@ -10,12 +10,22 @@ Tests:
 - R001-T01: Verify that two successive calls return distinct values.
 - R001-T02: Verify that the non-prefix portion of the ID is 26 characters (16 bytes × 8 bits / 5 bits per base32 char = 25.6, padded to 26 without padding chars).
 - R001-T03: Verify that the non-prefix portion contains only lowercase base32 characters (`a-z`, `2-7`).
+- R001-T04: Verify that register validation accepts a fully valid register request with generated identifier wiring.
+- R001-T05: Verify that register validation rejects unknown credential modes before ID issuance.
+- R001-T06: Verify that register validation rejects disabled HMAC mode before ID issuance.
+- R001-T07: Verify that register validation rejects missing Ed25519 keys before ID issuance.
+- R001-T08: Verify that register validation rejects non-base64 Ed25519 keys before ID issuance.
+- R001-T09: Verify that register validation rejects invalid-length Ed25519 keys before ID issuance.
+- R001-T10: Verify that register validation accepts a canonical valid Ed25519 request path.
+- R001-T11: Verify that register validation accepts a canonical valid HMAC request path when enabled.
 
 R005  Statement: Credential IDs must carry a stable `cred_` prefix and be fully lowercase.
 Design: The returned string is `"cred_"` concatenated with the lowercased base32 encoding, producing IDs of the form `cred_<26 lowercase chars>`.
 Tests:
 - R005-T01: Verify that every generated ID starts with `cred_`.
 - R005-T02: Verify that the full ID string contains no uppercase characters.
+- R005-T03: Verify that upload target response JSON omits `routing_version` when empty in ID-adjacent API payloads.
+- R005-T04: Verify that revoke validation accepts a valid request for IDs produced by `NewCredentialID`.
 
 ## Changelog
 

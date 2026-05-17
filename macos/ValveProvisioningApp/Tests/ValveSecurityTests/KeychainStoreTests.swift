@@ -6,6 +6,7 @@ import ValveSecurity
 // #R001-T02: Saving to the same key twice overwrites without error.
 // #R001: Persist arbitrary data to macOS Keychain under service-scoped account key.
 // #R005-T01: Loading a non-existent key returns nil without throwing.
+// #R005-T02: Unknown keychain status maps to unhandled error case.
 // #R005: Load previously persisted data, returning nil when item does not exist.
 @Test
 func keychainStoreRoundTripsData() throws

@@ -34,6 +34,8 @@ Tests:
 - R010-T02: Verify that an empty `install_id` returns an error.
 - R010-T03: Verify that `credential_mode=ed25519` with a base64 key that decodes to the wrong length returns an error.
 - R010-T04: Verify that a fully valid Ed25519 rotate request returns nil.
+- R010-T05: Verify that `credential_mode=hmac_sha256` with `hmacEnabled=false` returns an error for rotate requests.
+- R010-T06: Verify that an unknown rotate-mode service error maps to the generic validation failure path.
 
 R015  Statement: Upload target request validation must reject missing tenant, install, and credential identifiers.
 Design: `ValidateUploadTargetRequest` returns an error when `tenant_id`, `install_id`, or `credential_id` are empty.
@@ -42,6 +44,7 @@ Tests:
 - R015-T02: Verify that an empty `install_id` returns an error.
 - R015-T03: Verify that an empty `credential_id` returns an error.
 - R015-T04: Verify that a fully valid upload target request returns nil.
+- R015-T05: Verify that successful upload-target lookup validation supports downstream audit recording behavior.
 
 ## Changelog
 

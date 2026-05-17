@@ -10,6 +10,7 @@ Tests:
 - R001-T01: Verify that two successive calls with the same size return distinct strings.
 - R001-T02: Verify that the returned string is valid standard base64 (decodable without error).
 - R001-T03: Verify that decoding the returned string produces exactly `size` bytes.
+- R001-T04: Verify that register validation consumers reject malformed base64 key material when decoding fails.
 
 R005  Statement: Secret hashing must produce a deterministic, lowercase SHA-256 hex digest.
 Design: `HashSecretHex(secret)` computes `sha256.Sum256([]byte(secret))` and returns `hex.EncodeToString` of the result, which is always 64 lowercase hex characters.

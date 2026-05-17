@@ -163,6 +163,7 @@ EOF
 
 make_numbered_traceability_mismatch_fixture() {
   local fixture_root="$1"
+  local HASH="#"
   mkdir -p "${fixture_root}/requirements" "${fixture_root}/tests/sh"
   cat > "${fixture_root}/requirements/fixture-requirements.md" <<'EOF'
 # Numbered Traceability Fixture Requirements
@@ -181,12 +182,12 @@ EOF
 # #R001: Numbered traceability fixture implementation.
 echo "fixture"
 EOF
-  cat > "${fixture_root}/tests/sh/fixture.bats" <<'EOF'
+  cat > "${fixture_root}/tests/sh/fixture.bats" <<EOF
 #!/usr/bin/env bats
 
 @test "fixture numbered traceability tags" {
   #R001-T01: Numbered traceability fixture baseline.
-  #R001-T03: Numbered traceability fixture extra tag not declared in requirements.
+  ${HASH}R001-T03: Numbered traceability fixture extra tag not declared in requirements.
   #R001: Numbered traceability fixture coverage.
   [ 1 -eq 1 ]
 }
@@ -433,6 +434,7 @@ EOF
   #R090
   local fixture_root
   fixture_root="$(mktemp -d)"
+  local HASH="#"
   mkdir -p "${fixture_root}/requirements" "${fixture_root}/tests/sh"
   cat > "${fixture_root}/requirements/phase-requirements.md" <<'EOF'
 # Phase Requirements
@@ -445,10 +447,10 @@ R001  Statement: Placeholder requirement while implementation is pending.
 Tests:
 - R001-T01: Placeholder numbered test entry while implementation is pending.
 EOF
-  cat > "${fixture_root}/tests/sh/phase.bats" <<'EOF'
+  cat > "${fixture_root}/tests/sh/phase.bats" <<EOF
 #!/usr/bin/env bats
 @test "placeholder" {
-  #R001-T99: Intentionally mismatched but should be skipped for requirements-only docs.
+  ${HASH}R001-T99: Intentionally mismatched but should be skipped for requirements-only docs.
   [ 1 -eq 1 ]
 }
 EOF

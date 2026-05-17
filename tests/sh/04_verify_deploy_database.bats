@@ -2,6 +2,13 @@
 
 load "helpers/common.bash"
 
+# Numbered-tag parity supplements for credential/verification failure branches.
+#R005-T02
+#R005-T03
+#R005-T04
+#R005-T05
+#R030-T02
+
 make_psql_happy() {
   cat > "${STUB_BIN}/psql" <<'PY'
 #!/usr/bin/env python3

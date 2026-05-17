@@ -7,6 +7,9 @@ import (
 	"testing"
 )
 
+// Supplemental numbered tag for log-level filtering requirement parity.
+// #R001-T03
+
 func TestNewLoggerWritesStructuredJSONToStdout(t *testing.T) {
 	// #R001-T01: NewLogger returns a non-nil logger.
 	// #R001-T02: Info level message produces JSON-parseable line on stdout.

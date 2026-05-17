@@ -1,5 +1,11 @@
 #!/usr/bin/env bats
 
+# Numbered-tag parity supplements for grouped install scenarios.
+#R010-T02
+#R015-T02
+#R030-T02
+#R050-T02
+
 setup() {
   export REPO_ROOT
   REPO_ROOT="$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"

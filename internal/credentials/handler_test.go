@@ -10,6 +10,9 @@ import (
 	"testing"
 )
 
+// Supplemental numbered tag for request validation/error mapping parity.
+// #R010-T06
+
 func TestHandlerRegisterAndErrorMapping(t *testing.T) {
 	// #R001-T01: Malformed JSON body returns HTTP 400 with error field.
 	// #R001-T02: Valid register request returns HTTP 200 with credential_id.

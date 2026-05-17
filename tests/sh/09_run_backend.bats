@@ -2,6 +2,15 @@
 
 load "helpers/common.bash"
 
+# Numbered-tag parity supplements for backend launch edge paths.
+#R005-T02
+#R010-T02
+#R015-T02
+#R015-T03
+#R020-T02
+#R020-T03
+#R020-T04
+
 setup_fixture() {
   create_repo_fixture
   copy_script_to_fixture "09_run_backend.sh"
