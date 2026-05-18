@@ -159,6 +159,52 @@ Requires:
 - `GET /healthz` -> process liveness
 - `GET /readyz` -> database reachability
 
+## QED LLM Evals (Recorded-Only v0)
+
+Valve includes a recorded-only QED eval bootstrap under `.qed/evals`.
+These evals score model answers against recorded API and script contracts from repository tests and requirements docs.
+
+Suites:
+
+- `.qed/evals/api_recorded.yaml`
+- `.qed/evals/scripts_recorded.yaml`
+- `.qed/evals/repo_quality_recorded.yaml` (repo-level testing and testing-of-testing quality)
+- `.qed/evals/combined_recorded.yaml`
+
+Run all suites (CI gate enabled in each spec):
+
+```bash
+./11_run_llm_evals.sh run
+```
+
+Create or refresh baselines:
+
+```bash
+./11_run_llm_evals.sh save-baseline
+```
+
+Compare current run results against saved baselines:
+
+```bash
+./11_run_llm_evals.sh compare
+```
+
+Run only the repo-quality meta eval:
+
+```bash
+./11_run_llm_evals.sh repo-quality-only
+```
+
+The eval entrypoint assumes local QED source at `/Users/phil/local/src/qed`.
+Override with:
+
+```bash
+QED_REPO_PATH="/path/to/qed" ./11_run_llm_evals.sh run
+```
+
+Recorded-only scope means no live Valve or Postgres process is required for these suites.
+This phase validates contract understanding and regression trends from curated examples.
+
 ## Security Model
 
 - Per-tenant/per-install credential model only (no global shared app credential).

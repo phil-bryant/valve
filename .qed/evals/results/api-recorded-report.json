@@ -1,0 +1,123 @@
+{
+  "schema_version": "0.5",
+  "run_id": "run-1779053794014956000",
+  "spec_name": "valve-api-recorded",
+  "generated_at": "2026-05-17T21:36:34Z",
+  "dataset_path": "/Users/phil/local/src/valve/.qed/evals/datasets/api_recorded.jsonl",
+  "target": {
+    "provider": "openai-compatible",
+    "model": "gpt-4.1-mini",
+    "base_url": "https://api.openai.com/v1"
+  },
+  "judge": {
+    "provider": "anthropic",
+    "model": "claude-3-5-sonnet-latest",
+    "base_url": "https://api.anthropic.com/v1"
+  },
+  "thresholds": {
+    "min_average_score": 0.75,
+    "max_regression_drop": 0.05
+  },
+  "results": [
+    {
+      "case_id": "api-register-valid-ed25519",
+      "input": "Valve API contract case: POST /v1/valve/credentials/register with valid JSON payload for credential_mode=ed25519 and a valid base64 public key. What should the result be?",
+      "reference": "Returns HTTP 200 and a JSON response containing a non-empty credential_id with signing algorithm ed25519 semantics. The flow should not report validation or auth errors.",
+      "output": "When you make a POST request to the Valve API endpoint `/v1/valve/credentials/register` with:\n\n- A valid JSON payload,\n- `credential_mode` set to `\"ed25519\"`, and\n- A valid base64-encoded Ed25519 public key,\n\nthen the expected result is that the API registers the credential successfully.\n\n**Typical expected behavior:**\n\n1. **HTTP Status Code:**  \n   - `201 Created` (or possibly `200 OK`) indicating successful registration.\n\n2. **Response Body:**  \n   - A JSON object containing details about the registered credential, such as:\n     - A unique credential ID or handle.\n     - The `credential_mode` echoed back (`\"ed25519\"`).\n     - Possibly a timestamp or metadata about the registration.\n     - Confirmation that the public key has been stored.\n\n3. **Side Effects:**  \n   - The public key is stored securely by the Valve system to be used later for authentication or signature verification.\n\n---\n\n### Example\n\n**Request:**\n\n```http\nPOST /v1/valve/credentials/register\nContent-Type: application/json\n\n{\n  \"credential_mode\": \"ed25519\",\n  \"public_key\": \"MCowBQYDK2VwAyEAbCdEfGhIjKlmNoPqRsTuVwXyZ0123456789ABCD==\"\n}\n```\n\n**Response:**\n\n```http\nHTTP/1.1 201 Created\nContent-Type: application/json\n\n{\n  \"credential_id\": \"abc123\",\n  \"credential_mode\": \"ed25519\",\n  \"registered_at\": \"2024-06-10T15:30:00Z\",\n  \"status\": \"success",
+      "judge_score": 0,
+      "passed": false,
+      "error": "judge model error: anthropic request failed: 404 Not Found: {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-3-5-sonnet-latest\"},\"request_id\":\"req_011Cb8rtLe6TDBcPsHMYAz2c\"}"
+    },
+    {
+      "case_id": "api-register-malformed-json",
+      "input": "Valve API contract case: POST /v1/valve/credentials/register with malformed JSON body `{`. What is the expected behavior?",
+      "reference": "Returns HTTP 400 with JSON error field. The handler must map malformed JSON into a stable invalid-input response.",
+      "output": "When a client sends a POST request to `/v1/valve/credentials/register` with a malformed JSON body such as a single `{`, which is invalid JSON syntax, the expected behavior according to common REST API best practices and typical Valve API contract semantics would be:\n\n1. **400 Bad Request Response**:  \n   The server should detect that the request body is not a valid JSON. Since the endpoint expects a JSON payload, parsing will fail.\n\n2. **Error Message in Response Body**:  \n   The response should include a JSON error object indicating the nature of the error, for example:\n   ```json\n   {\n     \"error\": \"Malformed JSON\",\n     \"message\": \"Request body contains invalid JSON syntax.\"\n   }\n   ```\n   or a similarly descriptive message.\n\n3. **No Side Effects**:  \n   Because the request is invalid, no credentials should be registered or modified; the server must reject the input before performing any operations.\n\n---\n\n### Summary\n\n| Aspect             | Expected Behavior                               |\n|--------------------|------------------------------------------------|\n| HTTP Status Code    | 400 Bad Request                                |\n| Response Body      | JSON error object describing malformed JSON   |\n| Server Processing  | No registration, reject request immediately    |\n\n---\n\nIf you are implementing or testing this endpoint, you should verify that malformed input is properly rejected this way to ensure robustness of the API.",
+      "judge_score": 0,
+      "passed": false,
+      "error": "judge model error: anthropic request failed: 404 Not Found: {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-3-5-sonnet-latest\"},\"request_id\":\"req_011Cb8rtdbZcCoLnvJWzHmvL\"}"
+    },
+    {
+      "case_id": "api-register-denied-authorizer",
+      "input": "Service-layer contract case: Register request is otherwise valid but authorizer denies provisioning. What outcome is expected?",
+      "reference": "Returns unauthorized outcome (ErrUnauthorized at service layer; HTTP mapping should produce forbidden/unauthorized class response depending on route mapping). Credential should not be created.",
+      "output": "In a service-layer contract scenario, if a register request is otherwise valid (all required fields/formats are correct, the syntax and semantics of the request conform to the contract), but the authorizer denies provisioning (meaning the authorization check fails, e.g., due to insufficient permissions, quota limits, or policy restrictions), then the expected outcome is:\n\n- The service **rejects the request**.\n- The response should clearly indicate an **authorization failure**.\n- Typically, the service responds with an **HTTP 403 Forbidden** status code (if it's an HTTP-based API), or an equivalent error signaling lack of authorization.\n- The response payload often includes an error code/message explaining the authorization denial.\n- No provisioning or resource allocation happens.\n- The contract might specify that in such cases, the client should receive a descriptive error so they know the reason for denial.\n\n**Summary:**\n\n- Valid request.\n- Authorization denied.\n- Return an authorization failure error (e.g., 403 Forbidden).\n- No provisioning performed.\n\nThis ensures clarity to the client while maintaining the integrity of the authorization policies.",
+      "judge_score": 0,
+      "passed": false,
+      "error": "judge model error: anthropic request failed: 404 Not Found: {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-3-5-sonnet-latest\"},\"request_id\":\"req_011Cb8rtsFqfBwAQ2Cq5dVMp\"}"
+    },
+    {
+      "case_id": "api-hmac-secret-not-leaked",
+      "input": "Security contract case: HMAC mode registration can return a one-time secret, but what must list and verification responses do for that credential afterward?",
+      "reference": "List and verification responses must not expose HMAC secret material. PublicKey/secret-bearing fields should be empty for HMAC records in those read paths.",
+      "output": "In a security contract involving HMAC mode registration, the process typically involves three main phases related to the credential:\n\n1. **Registration:** During this phase, the system generates and returns a one-time secret tied to the credential.\n\n2. **List Response:** When listing credentials, the system **must not expose the secret again**. Instead, it should provide metadata about the credential without revealing the secret or any material that could compromise security.\n\n3. **Verification Response:** Similarly, during verification, the system **must use the stored secret internally** to perform verification but **must not return or expose the secret or its equivalent** in the response.\n\n**In summary:**\n\n- The one-time secret is only provided once at registration.\n- Subsequent operations like listing or verification must avoid returning the secret.\n- These responses should ensure the secret remains confidential and only used internally for cryptographic operations.\n\nThis constraint ensures the credential’s integrity and confidentiality are maintained across the lifecycle of its usage.",
+      "judge_score": 0,
+      "passed": false,
+      "error": "judge model error: anthropic request failed: 404 Not Found: {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-3-5-sonnet-latest\"},\"request_id\":\"req_011Cb8ru92NaEKTwRsgxje67\"}"
+    },
+    {
+      "case_id": "api-revoke-wrong-tenant",
+      "input": "Revoke contract case: credential exists but belongs to a different tenant than request. What should happen?",
+      "reference": "Revoke fails with tenant mismatch semantics (ErrTenantMismatch / conflict-style mapping). Credential should not be revoked for the requesting tenant.",
+      "output": "When handling a revoke contract case where the credential exists but belongs to a different tenant than the one making the request, the correct behavior depends largely on your system's multi-tenancy and security policies. However, the general best practice is:\n\n1. **Prevent Cross-Tenant Operations:**  \n   A tenant should not be able to revoke or modify credentials belonging to another tenant. This is a fundamental isolation principle in multi-tenant systems.\n\n2. **Return an Appropriate Error:**  \n   Your system should reject the revoke request and return an error indicating that the credential does not exist within the requesting tenant’s scope or that the operation is forbidden.\n\n3. **Security Logging:**  \n   Log the incident for security auditing purposes to detect any unauthorized attempts to access or revoke credentials across tenant boundaries.\n\n**Example Response:**\n\n- HTTP Status: `403 Forbidden` or `404 Not Found`  \n- Error message: `\"Credential not found in the requesting tenant's domain\"` or `\"Operation forbidden: Credential belongs to a different tenant.\"`\n\n**Summary:**  \nWhen the credential belongs to a different tenant, do **not** revoke it. Instead, reject the request with a clear error indicating tenant mismatch or lack of permission. This safeguards tenant isolation and data integrity in your system.",
+      "judge_score": 0,
+      "passed": false,
+      "error": "judge model error: anthropic request failed: 404 Not Found: {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-3-5-sonnet-latest\"},\"request_id\":\"req_011Cb8ruQKd9enKcb5tZ79Ng\"}"
+    },
+    {
+      "case_id": "api-rotate-success",
+      "input": "Rotate contract case: active old credential, matching tenant/install, valid new key. What should the response and state transition be?",
+      "reference": "Rotation succeeds: response includes old_status=rotated and non-empty new credential id. Old credential status becomes rotated and points to replacement.",
+      "output": "In a **rotate contract** case where you have:\n\n- **Active old credential** (meaning the current credential is valid and in use),\n- The request is coming from the **matching tenant/install** (authorized tenant or installation),\n- And the new key provided is **valid**,\n\nthe expected behavior in terms of **response** and **state transition** should be:\n\n---\n\n### Expected Response\n\n- **Success/OK response** indicating that the key rotation was successful.\n- Return any necessary metadata such as new credential version, expiry, or confirmation.\n- Possibly include updated tokens or session information if relevant.\n\n### State Transition\n\n- **Update the credential record/state** with the new key information. This involves:\n  - Marking the old key as rotated (could be retired or archived, but still valid until explicitly revoked).\n  - Setting the new key as the active credential.\n- Maintain audit logs of the rotation event for security and tracking.\n- Ensure that any sessions or tokens issued under the old key continue to function as per policy or require renewal.\n- Possibly update related metadata such as timestamps and version numbers.\n\n---\n\n### Summary:\n\n| Condition                   | Response                          | State Transition                                          |\n|-----------------------------|---------------------------------|-----------------------------------------------------------|\n| Active old credential        | Return success/OK                | Replace active key with the new valid key                 |\n| Tenant/install matches       |                                 | Update credential state with new key and metadata         |\n| New key is valid             |                                 | Archive old key as rotated, log rotation event             |\n\n---\n\nIf implementing this in code or specs, the flow might look like:\n\n1. Verify caller is authorized tenant/install.\n2. Verify old credential is active.\n3. Validate new key correctness and format.\n4.",
+      "judge_score": 0,
+      "passed": false,
+      "error": "judge model error: anthropic request failed: 404 Not Found: {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-3-5-sonnet-latest\"},\"request_id\":\"req_011Cb8ruqDacqMTVHdHv7zkm\"}"
+    },
+    {
+      "case_id": "api-list-query-contract",
+      "input": "List contract case: GET /v1/valve/credentials?tenant_id=tenant\u0026install_id=install for existing matching record. What is expected?",
+      "reference": "Returns HTTP 200 with JSON list of credentials filtered by tenant_id and install_id query parameters.",
+      "output": "For the list contract case with the HTTP GET request:\n\n```\nGET /v1/valve/credentials?tenant_id=tenant\u0026install_id=install\n```\n\n**when there exists an existing matching record**, the expected behavior according to typical API contract conventions is:\n\n### Expected Behavior\n\n1. **Response Status Code:**  \n   - `200 OK` — The request was successful and the resource(s) were found.\n\n2. **Response Body:**  \n   - A JSON object or array containing the matching credential record(s) tied to the provided `tenant_id` and `install_id`.\n   - The exact structure depends on your API design but a common example might be:\n\n```json\n{\n  \"credentials\": [\n    {\n      \"tenant_id\": \"tenant\",\n      \"install_id\": \"install\",\n      \"credential_id\": \"some_id\",\n      \"username\": \"user_example\",\n      \"api_key\": \"******\",\n      \"created_at\": \"2024-05-01T12:34:56Z\",\n      \"updated_at\": \"2024-05-10T08:21:30Z\"\n      // additional relevant fields...\n    }\n  ]\n}\n```\n\n- Or, if the contract returns a single object (assuming one credential per tenant/install pair):\n\n```json\n{\n  \"tenant_id\": \"tenant\",\n  \"install_id\": \"install\",\n  \"credential_id\": \"some_id\",\n  \"username\": \"user_example\",\n  \"api_key\": \"******\",\n  \"created_at\": \"2024-05-01T12:34:56Z\",\n  \"updated_at\": \"2024-05-10T08:21:30Z\"\n}\n```\n\n3",
+      "judge_score": 0,
+      "passed": false,
+      "error": "judge model error: anthropic request failed: 404 Not Found: {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-3-5-sonnet-latest\"},\"request_id\":\"req_011Cb8rvAt2Cc3KyEpVbjbg4\"}"
+    },
+    {
+      "case_id": "api-verification-active-contract",
+      "input": "Verification contract case: GET /v1/valve/credentials/{credential_id}/verification for active ed25519 credential. What should response include?",
+      "reference": "Returns active credential verification details including credential id, tenant/install identity, mode, and public key for ed25519. Status should be active.",
+      "output": "For the `GET /v1/valve/credentials/{credential_id}/verification` endpoint dealing with an **active ed25519 credential**, the response typically includes the verification status and relevant metadata confirming the credential's validity.\n\nWhile the exact schema can vary depending on the API specification you are referring to, a standard response for verifying an active Ed25519 credential should include fields like:\n\n- **credential_id**: Identifier of the credential being verified.\n- **status**: Verification status, e.g., `\"valid\"`, `\"invalid\"`, `\"revoked\"`, `\"expired\"`.\n- **public_key**: The Ed25519 public key associated with the credential.\n- **issued_at**: Timestamp when the credential was issued.\n- **expires_at**: Expiry timestamp if applicable.\n- **verification_method**: Method used for verification, indicating Ed25519 signature verification.\n- **verification_proof** (optional): Details about the cryptographic proof, such as signature, challenge, or nonce used.\n- **message** (optional): A human-readable message about the verification result.\n\n### Example JSON response structure\n\n```json\n{\n  \"credential_id\": \"abc123\",\n  \"status\": \"valid\",\n  \"public_key\": \"11qYAYLef3S7EYXqL5Fy1z2xGkT2kCqbt9sn22XUuGk\",\n  \"issued_at\": \"2024-04-01T10:20:30Z\",\n  \"expires_at\": \"2025-04-01T10:20:30Z\",\n  \"verification_method\": \"ed25519-signature\",\n  \"verification_proof\": {\n    \"type",
+      "judge_score": 0,
+      "passed": false,
+      "error": "judge model error: anthropic request failed: 404 Not Found: {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-3-5-sonnet-latest\"},\"request_id\":\"req_011Cb8rvZNcZm8kzEmSsFhZJ\"}"
+    },
+    {
+      "case_id": "api-upload-target-service-auth-required",
+      "input": "Router security contract case: POST /v1/piston/upload-target without X-Valve-Service-Key header. What should happen?",
+      "reference": "Returns HTTP 401 with JSON error body. Upload-target route is service-auth protected and must reject missing key.",
+      "output": "In the context of a router security contract, if a client sends a POST request to the endpoint `/v1/piston/upload-target` **without** including the required `X-Valve-Service-Key` header, the expected behavior should be:\n\n- The server **must reject** the request because the required authentication or authorization header is missing.\n- The response status should be **401 Unauthorized** or **403 Forbidden**, depending on the API’s design (commonly 401 Unauthorized if authentication is missing).\n- The response body should include an error message indicating that the `X-Valve-Service-Key` header is missing or invalid.\n  \n### Summary\n\n| Condition                                 | Expected Server Response        |\n|-------------------------------------------|-------------------------------|\n| POST `/v1/piston/upload-target` without `X-Valve-Service-Key` header | 401 Unauthorized (or 403 Forbidden) with error message |\n\n**Reason:** The `X-Valve-Service-Key` header is used as an authentication or authorization token. Missing this header means the request cannot be properly authenticated, therefore it must be rejected.\n\nIf you are implementing or testing this API, make sure your router or security middleware verifies the presence and validity of `X-Valve-Service-Key` and responds accordingly.",
+      "judge_score": 0,
+      "passed": false,
+      "error": "judge model error: anthropic request failed: 404 Not Found: {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-3-5-sonnet-latest\"},\"request_id\":\"req_011Cb8rvqAPLx878X7aheLmL\"}"
+    },
+    {
+      "case_id": "api-upload-target-tenant-mismatch",
+      "input": "Upload target contract case: credential belongs to tenant A but request uses tenant B. Expected behavior?",
+      "reference": "Returns conflict/mismatch failure (HTTP 409 at handler mapping). Service must reject tenant mismatch and avoid issuing upload target.",
+      "output": "In a multi-tenant system with contract-based authorization (e.g., cloud services with tenant isolation), when a user or service credential that belongs to Tenant A attempts to perform an upload (or other action) specifying Tenant B’s context, the expected behavior is generally **to reject or deny the request**.\n\n### Reasoning:\n\n- **Credentials are scoped to a tenant:** Credentials issued to Tenant A should only authorize actions within Tenant A’s resources.\n- **Request context mismatch:** If the request explicitly states or targets Tenant B, a tenant different from the credential's tenant, this represents a cross-tenant access attempt.\n- **Security and isolation principle:** Multi-tenant systems must ensure tenants are isolated. Cross-tenant access violates this isolation and can be a security risk.\n- **Authorization checks:** The system should verify that the credential’s tenant ID matches the tenant targeted by the request. If they don’t match, the authorization fails.\n\n### Expected system behaviors:\n\n- Return a **403 Forbidden** or equivalent error indicating unauthorized access.\n- Log the mismatch and unauthorized access attempt for auditing and security monitoring.\n- Reject the upload and do not process the request.\n\n---\n\nIf you can provide details about the specific platform or system (e.g., Azure Blob Storage, AWS S3 with tenant tagging, or a custom multi-tenant application), I can offer more tailored guidance. But the above general principle holds in most contract-based multi-tenant systems.",
+      "judge_score": 0,
+      "passed": false,
+      "error": "judge model error: anthropic request failed: 404 Not Found: {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-3-5-sonnet-latest\"},\"request_id\":\"req_011Cb8rwCu676xHNrDMemg3T\"}"
+    }
+  ],
+  "metrics": {
+    "case_count": 10,
+    "scored_count": 0,
+    "passed_count": 0,
+    "average_score": 0,
+    "failure_count": 10,
+    "error_count": 10,
+    "pass_rate": 0,
+    "score_variance": 0
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "schema_version": "0.5",
+  "run_id": "run-1779054251140090000",
+  "spec_name": "valve-repo-quality-recorded",
+  "generated_at": "2026-05-17T21:44:11Z",
+  "dataset_path": "/Users/phil/local/src/valve/.qed/evals/datasets/repo_quality_recorded.jsonl",
+  "target": {
+    "provider": "openai-compatible",
+    "model": "gpt-4.1-mini",
+    "base_url": "https://api.openai.com/v1"
+  },
+  "judge": {
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-6",
+    "base_url": "https://api.anthropic.com/v1"
+  },
+  "thresholds": {
+    "min_average_score": 0.78,
+    "max_regression_drop": 0.04
+  },
+  "results": [
+    {
+      "case_id": "repo-quality-overall-maturity",
+      "input": "Rate this repository's testing maturity from 0.0 to 1.0 and justify with explicit evidence only.\nEvidence:\n- 05_run_unit_tests.sh runs SQL unit tests, Go unit tests, Bats tests, and Swift tests in sequence.\n- 05_run_unit_tests.sh fails when go test output includes packages with [no test files].\n- tests/sh includes Bats tests for scripts 00-10, 97-99.\n- 00_verify_requirements_traceability.sh enforces requirement/test tag traceability and anti-cheat checks.\n- README documents production TODOs for auth integration, KMS, and observability.\nProvide strengths, risks, and one prioritized next step.",
+      "reference": "A high-quality answer gives a balanced maturity score (not extreme), cites the listed controls as strengths, cites production TODOs as gaps, and recommends one concrete next step tied to evidence (for example tightening live integration coverage or CI enforcement).",
+      "output": "Testing maturity rating: 0.7\n\nJustification with explicit evidence:\n- The presence of a comprehensive script (05_run_unit_tests.sh) that runs multiple categories of tests (SQL, Go, Bats, Swift) indicates a well-rounded approach to different test types, reflecting solid coverage across components.\n- The script's failure on encountering Go packages with [no test files] shows an enforcement mechanism to avoid untested code paths.\n- Inclusion of Bats tests for shell scripts (00-10, 97-99) further shows attention to script validation, enhancing reliability.\n- The 00_verify_requirements_traceability.sh script enforcing requirement-to-test traceability and anti-cheat controls indicates a mature governance approach to testing completeness and integrity.\n- The README states outstanding production TODOs (auth integration, KMS, observability), highlighting incomplete coverage or infrastructure around security and monitoring, which can impact test robustness in real-world conditions.\n\nStrengths:\n- Multi-language/unit testing automation ensures diverse code coverage.\n- Enforcement of test presence and requirement traceability improves test quality and project governance.\n- Inclusion of shell script tests addresses common gaps in automation scripts.\n\nRisks:\n- Missing key production components (auth, KMS, observability) may lead to undetected issues in security/monitoring aspects.\n- No explicit mention of integration, system, load, or security testing—possible gaps beyond unit and script tests.\n- Potential lack of test metrics or coverage reporting to guide improvements.\n\nPrioritized next step:\n- Implement and integrate system-level and security testing focusing on the pending production areas (auth, KMS, observability), coupled with automated test coverage reporting to assess effectiveness continuously.",
+      "judge_score": 0.85,
+      "judge_reason": "The answer is well-grounded in the provided evidence, citing all key controls (05_run_unit_tests.sh multi-language coverage, [no test files] enforcement, Bats tests, traceability script) as strengths and correctly identifying production TODOs (auth, KMS, observability) as gaps. The maturity score of 0.7 is balanced and justified. The prioritized next step is concrete and tied to evidence. Minor deduction because the next step is slightly broad (bundles system testing + security testing + coverage reporting into one recommendation rather than a single prioritized action), and there is no mention of CI enforcement as a concrete gap, which the reference behavior highlights.",
+      "passed": true
+    },
+    {
+      "case_id": "repo-quality-testing-of-testing",
+      "input": "Evaluate testing-of-testing quality for this repo.\nEvidence:\n- Traceability verifier has dedicated Bats coverage including malformed bullets, anti-cheat failures, and requirements-only mode.\n- Script tests assert failure paths for missing tools and invalid runtime inputs.\n- Unit-test runner script checks for packages without _test.go files.\n- Recorded-only evals currently do not execute live Valve+DB behavior.\nReturn: (1) score 0.0-1.0, (2) strongest evidence of testing-of-testing, (3) biggest blind spot.",
+      "reference": "Strong answers identify meta-testing controls (traceability verifier tests, negative-path script tests, no-test-files gate) as evidence, and correctly call out the recorded-only/live-behavior gap as the primary blind spot.",
+      "output": "(1) Score: 0.7\n\n(2) Strongest evidence of testing-of-testing:  \nThe traceability verifier's dedicated Bats coverage is a clear example of testing-of-testing quality. It includes tests for malformed bullets, anti-cheat failures, and requirements-only mode, directly validating that the tests and their verification logic behave correctly under a variety of conditions.\n\n(3) Biggest blind spot:  \nRecorded-only evaluations do not execute live Valve+DB behavior, meaning these tests are not fully exercising the runtime integration aspects. This gap limits the effectiveness of testing-of-testing by not validating that the tests remain accurate or effective in a live environment with real dependencies.",
+      "judge_score": 0.7,
+      "judge_reason": "The answer correctly identifies the traceability verifier Bats coverage as the strongest meta-testing evidence and accurately names the recorded-only/live-behavior gap as the primary blind spot. However, it omits two other concrete evidence points from the provided material: the script tests asserting failure paths for missing tools and invalid runtime inputs, and the unit-test runner gate checking for packages without _test.go files. These omissions prevent a full 1.0 score, but the answer is grounded in evidence without fabrication, warranting 0.7.",
+      "passed": true
+    },
+    {
+      "case_id": "repo-quality-security-test-depth",
+      "input": "Assess security-test depth from this evidence:\n- Upload-target route requires service auth and has tests for missing service key (401).\n- Credential service tests include tenant mismatch, unauthorized paths, and HMAC secret non-leakage checks.\n- README lists future work for mTLS, rate limiting, and KMS envelope encryption.\nScore depth 0.0-1.0 and explain what is covered now vs deferred.",
+      "reference": "Good answer states security testing is meaningful but incomplete: current tests cover auth/tenant/leakage contracts, while mTLS/rate-limit/KMS hardening are explicitly deferred; score should reflect this mixed state.",
+      "output": "Given the provided evidence:\n\n**Covered now:**\n- The upload-target route is protected by service authentication, ensuring only authorized services can access it.\n- Tests verify proper handling of missing service keys (responding with 401), indicating robust enforcement of authentication.\n- Credential service tests cover tenant mismatches (multi-tenancy enforcement), unauthorized path restrictions, and ensuring HMAC secrets are not accidentally leaked, which improves confidentiality and access control.\n\n**Deferred / Future work:**\n- mTLS (mutual TLS) for stronger, certificate-based mutual authentication to prevent man-in-the-middle attacks.\n- Rate limiting to mitigate abuse and potential denial-of-service attacks.\n- KMS envelope encryption for enhanced data encryption at rest and cryptographic key management.\n\n**Security test depth score: 0.5 (on a 0 to 1 scale)**  \nReasoning: Current tests target key authentication and authorization aspects with meaningful coverage (401 handling, tenant isolation, secret non-leakage), which form the foundational security layers. However, more advanced protections like transport layer security (mTLS), abuse mitigation (rate limiting), and stronger encryption management (KMS envelopes) are deferred. These missing controls reflect moderate depth currently with an intent to improve.\n\n---\n\n**Summary:** The system demonstrates foundational security test coverage focused on service authentication and authorization with some secret confidentiality checks. However, it lacks tests for transport security enhancements, abuse resistance, and advanced encryption management, indicating a need for deeper security test depth in future iterations.",
+      "judge_score": 0.9,
+      "judge_reason": "The answer is well-grounded in the provided evidence, correctly identifies what is currently covered (401 auth, tenant mismatch, unauthorized paths, HMAC secret non-leakage) and what is explicitly deferred (mTLS, rate limiting, KMS). The characterization of 'mixed state' aligns with the reference behavior. The score of 0.5 is reasonable and reflects the incomplete but meaningful coverage. Minor deduction because the reference behavior suggests the score should reflect this mixed state without necessarily pinning it to exactly 0.5, but the reasoning is sound and no fabrication occurs.",
+      "passed": true
+    },
+    {
+      "case_id": "repo-quality-operability-signal",
+      "input": "Rate operability testing quality based on:\n- Script-level Bats tests validate operator-facing failure messages and safe cancellation flows.\n- Backup/destroy/restore scripts are tested for required dependencies and idempotent-safe behavior.\n- CI-like eval gate currently halts on first failing suite due shell fail-fast behavior.\nGive a score and one concrete recommendation to improve developer feedback loops.",
+      "reference": "High-quality answer credits strong operability contract testing and suggests practical feedback improvements such as non-blocking suite aggregation/report collation, without dismissing fail-fast safety intent.",
+      "output": "**Operability Testing Quality Rating:** 7/10\n\n**Rationale:**  \n- Having script-level Bats tests that validate operator-facing failure messages and safe cancellation flows is a strong practice ensuring good UX and robustness during error scenarios.  \n- Testing backup/destroy/restore scripts for dependencies and idempotency covers critical operational workflows, enhancing reliability.  \n- The CI eval gate halting on first failure prevents wasted compute and quickly alerts developers. However, it limits the breadth of feedback per run since only the first failing suite is reported, potentially slowing down iterative fixes.\n\n**Concrete Recommendation:**  \nModify the CI evaluation gate to run all test suites and collect failures before halting. This can be achieved by disabling shell's `fail-fast` behavior (e.g., using `set +e` around test execution blocks or other parallel/concurrent test runners). By reporting all failures in one run, developers receive comprehensive feedback—allowing quicker multi-issue detection and resolution, thus improving developer feedback loops and accelerating fixes.",
+      "judge_score": 0.85,
+      "judge_reason": "The answer is well-grounded in the provided evidence, correctly credits the Bats-level operability contract testing and the fail-fast CI gate. The concrete recommendation (aggregating failures before halting via set+e or parallel runners) is practical and directly addresses the feedback-loop gap without dismissing fail-fast safety intent. Minor deduction because the recommendation could be slightly more precise (e.g., explicitly mentioning suite-level aggregation/report collation rather than broadly disabling fail-fast), and the answer doesn't explicitly acknowledge the idempotent-safe behavior testing as a distinct strength worth noting beyond a brief mention.",
+      "passed": true
+    },
+    {
+      "case_id": "repo-quality-prioritized-gap",
+      "input": "Given this repo evidence, identify the single highest-priority testing gap and justify:\n- Rich unit and shell contract tests exist.\n- Requirements traceability checks are enforced.\n- Recorded-only eval suites are in place.\n- Live integration path against running Valve+DB is not yet part of eval suites.\nProvide one recommendation with scope and expected impact.",
+      "reference": "Best answer prioritizes adding live integration eval coverage (or equivalent end-to-end checks) because it closes the largest realism gap left by recorded-only evaluation, while preserving existing contract tests.",
+      "output": "**Highest-priority testing gap:**\n\nThe absence of **live integration tests against the running Valve+DB environment** within the evaluation suites.\n\n**Justification:**\n\n- While rich unit and shell contract tests ensure internal component correctness and interface adherence, they do not validate real-world interaction with the actual integrated system components.\n- Recorded-only evaluation suites rely on previously captured data and do not account for possible divergences, dynamic system states, or integration bugs that occur in a live environment.\n- Without live integration testing, critical failures caused by mismatched expectations, environment-specific issues, or integration regressions with the Valve+DB backend could go unnoticed until deployment.\n- Requirements traceability checks focus on coverage but do not guarantee runtime correctness or system-level interoperability.\n\n---\n\n**Recommendation:**\n\n**Introduce a live integration testing stage within the evaluation suites that exercises the complete code path against the actual running Valve+DB services.**\n\n- **Scope:** Develop end-to-end integration tests that run in CI/CD pipelines, connecting to a live or suitably sandboxed instance of Valve+DB, validating real interactions, state changes, and response correctness.\n- **Expected impact:** Early detection of integration issues, improved confidence that the code works as expected in the production environment, reduced risk of late-stage defects, and stronger overall system reliability.",
+      "judge_score": 1,
+      "judge_reason": "The answer is fully grounded in the provided evidence, correctly identifies live integration testing as the highest-priority gap, justifies it by contrasting with the existing recorded-only evals and contract tests, and provides a concrete scoped recommendation with expected impact without fabricating capabilities or bypassing existing safety checks.",
+      "passed": true
+    }
+  ],
+  "metrics": {
+    "case_count": 5,
+    "scored_count": 5,
+    "passed_count": 5,
+    "average_score": 0.86,
+    "failure_count": 0,
+    "error_count": 0,
+    "pass_rate": 1,
+    "score_variance": 0.009400000000000021
+  }
+}

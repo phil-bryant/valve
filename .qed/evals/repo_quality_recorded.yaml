@@ -1,0 +1,29 @@
+name: valve-repo-quality-recorded
+dataset: datasets/repo_quality_recorded.jsonl
+output: results/repo-quality-recorded-report.json
+baseline: ../baselines/repo-quality-recorded-baseline.json
+target:
+  provider: openai-compatible
+  model: gpt-4.1-mini
+  base_url: https://api.openai.com/v1
+  api_key_env: OPENAI_API_KEY  # pragma: allowlist secret  # env-var name, not a secret (resolved from 1psa in 11_run_llm_evals.sh)
+  temperature: 0
+  max_tokens: 450
+judge:
+  provider: anthropic
+  model: claude-sonnet-4-6
+  base_url: https://api.anthropic.com/v1
+  api_key_env: ANTHROPIC_API_KEY  # pragma: allowlist secret  # env-var name, not a secret (resolved from 1psa in 11_run_llm_evals.sh)
+  temperature: 0
+  max_tokens: 450
+  rubric: |
+    You are grading repo-quality analysis about Valve testing maturity and testing-of-testing.
+    Score from 0 to 1.
+    1.0: Grounded in provided evidence, identifies strengths and concrete gaps, avoids fabrication.
+    0.7: Mostly grounded; minor omissions.
+    0.4: Vague analysis or misses key test-quality controls.
+    0.0: Hallucinates capabilities or ignores provided evidence.
+    Penalize ungrounded claims and recommendations that bypass existing safety checks.
+thresholds:
+  min_average_score: 0.78
+  max_regression_drop: 0.04

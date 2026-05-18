@@ -1,0 +1,26 @@
+name: valve-combined-recorded
+dataset: datasets/combined_recorded.jsonl
+output: results/combined-recorded-report.json
+baseline: ../baselines/combined-recorded-baseline.json
+target:
+  provider: openai-compatible
+  model: gpt-4.1-mini
+  base_url: https://api.openai.com/v1
+  api_key_env: OPENAI_API_KEY  # pragma: allowlist secret  # env-var name, not a secret (resolved from 1psa in 11_run_llm_evals.sh)
+  temperature: 0
+  max_tokens: 350
+judge:
+  provider: anthropic
+  model: claude-sonnet-4-6
+  base_url: https://api.anthropic.com/v1
+  api_key_env: ANTHROPIC_API_KEY  # pragma: allowlist secret  # env-var name, not a secret (resolved from 1psa in 11_run_llm_evals.sh)
+  temperature: 0
+  max_tokens: 350
+  rubric: |
+    You are grading mixed Valve API and script-contract answers from recorded data.
+    Score from 0 to 1.
+    Reward precise contract adherence, explicit error/status handling, and security-safe behavior.
+    Penalize ambiguous or fabricated behavior not supported by the provided case.
+thresholds:
+  min_average_score: 0.78
+  max_regression_drop: 0.04

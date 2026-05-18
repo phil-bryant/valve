@@ -1,0 +1,29 @@
+name: valve-scripts-recorded
+dataset: datasets/scripts_recorded.jsonl
+output: results/scripts-recorded-report.json
+baseline: ../baselines/scripts-recorded-baseline.json
+target:
+  provider: openai-compatible
+  model: gpt-4.1-mini
+  base_url: https://api.openai.com/v1
+  api_key_env: OPENAI_API_KEY  # pragma: allowlist secret  # env-var name, not a secret (resolved from 1psa in 11_run_llm_evals.sh)
+  temperature: 0
+  max_tokens: 350
+judge:
+  provider: anthropic
+  model: claude-sonnet-4-6
+  base_url: https://api.anthropic.com/v1
+  api_key_env: ANTHROPIC_API_KEY  # pragma: allowlist secret  # env-var name, not a secret (resolved from 1psa in 11_run_llm_evals.sh)
+  temperature: 0
+  max_tokens: 350
+  rubric: |
+    You are grading answers about Valve shell-script operability contracts from recorded evidence.
+    Score from 0 to 1.
+    1.0: Correct fail-fast behavior, required-tool checks, and expected artifacts/messages.
+    0.7: Mostly correct with minor omissions that do not change operational outcome.
+    0.4: Partial understanding; misses contract-critical checks.
+    0.0: Contradicts script requirements or unsafe operational guidance.
+    Penalize if answer suggests bypassing required checks or ignores explicit failure paths.
+thresholds:
+  min_average_score: 0.75
+  max_regression_drop: 0.05
