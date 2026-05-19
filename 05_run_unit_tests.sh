@@ -88,10 +88,62 @@ PGPASSWORD="$DB_PASSWORD" \
 #R030: Run Go unit tests only after SQL unit tests pass.
 echo ""
 echo "▶ Running Go unit tests..."
+GO_COVERAGE_THRESHOLD="${GO_COVERAGE_THRESHOLD:-70}"
+GO_COVERAGE_PACKAGES="${GO_COVERAGE_PACKAGES:-./internal/credentials ./internal/config ./internal/auth ./internal/httpserver ./internal/security ./internal/logging}"
+COVERAGE_PROFILE="${SCRIPT_DIR}/.security-reports/go-coverage.out"
+mkdir -p "${SCRIPT_DIR}/.security-reports"
 GO_TEST_OUTPUT_FILE="$(mktemp)"
 if ! go test ./... | tee "$GO_TEST_OUTPUT_FILE"; then
   exit 1
 fi
+
+#R038: Enforce a minimum Go line coverage threshold across core unit-tested packages.
+echo ""
+echo "▶ Checking Go coverage threshold (${GO_COVERAGE_THRESHOLD}%)..."
+go test ${GO_COVERAGE_PACKAGES} -coverprofile="${COVERAGE_PROFILE}" >/dev/null
+python3 - "${COVERAGE_PROFILE}" "${GO_COVERAGE_THRESHOLD}" "${SCRIPT_DIR}/.security-reports/coverage-summary.json" <<'PY'
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+profile = Path(sys.argv[1])
+threshold = float(sys.argv[2])
+summary_path = Path(sys.argv[3])
+
+if not profile.exists():
+    print(f"❌ Go coverage profile not found: {profile}")
+    raise SystemExit(1)
+
+result = subprocess.run(
+    ["go", "tool", "cover", "-func", str(profile)],
+    capture_output=True,
+    text=True,
+    check=False,
+)
+if result.returncode != 0:
+    print(result.stderr)
+    raise SystemExit(1)
+
+coverage_percent = 0.0
+for line in result.stdout.splitlines():
+    if line.strip().startswith("total:"):
+        coverage_percent = float(line.split()[-1].replace("%", ""))
+        break
+
+payload = {
+    "coverage_percent": round(coverage_percent, 2),
+    "threshold_percent": threshold,
+    "gate_failed": coverage_percent < threshold,
+}
+summary_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+print(json.dumps(payload, indent=2))
+if payload["gate_failed"]:
+    print(
+        f"❌ Go coverage gate failed: {coverage_percent:.2f}% < {threshold:.2f}% threshold."
+    )
+    raise SystemExit(1)
+PY
 
 #R030: Run Bats shell tests only after Go unit tests pass.
 echo ""

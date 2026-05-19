@@ -30,7 +30,20 @@ make_go_stub() {
   cat > "${STUB_BIN}/go" <<EOF
 #!/usr/bin/env bash
 echo "go \$*" >> "${CALLS_LOG}"
+if [ "\${1:-}" = "tool" ] && [ "\${2:-}" = "cover" ]; then
+  echo "total:                          (statements)    75.0%"
+  exit 0
+fi
 if [ "\${1:-}" = "test" ]; then
+  for arg in "\$@"; do
+    case "\$arg" in
+      -coverprofile=*)
+        profile="\${arg#-coverprofile=}"
+        mkdir -p "\$(dirname "\$profile")"
+        printf 'mode: set\nstub.go:1.1,1.2 2 2\n' > "\$profile"
+        ;;
+    esac
+  done
   if [ "${mode}" = "with-tests" ]; then
     cat <<'GOOUT'
 ok      valve/storage       0.001s
@@ -246,6 +259,7 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"▶ Running SQL unit tests"* ]]
   [[ "$output" == *"▶ Running Go unit tests"* ]]
+  [[ "$output" == *"▶ Checking Go coverage threshold"* ]]
   [[ "$output" == *"▶ Running Bats shell tests"* ]]
   [[ "$output" == *"▶ Running Swift package tests"* ]]
   grep -F "swift test --package-path" "${CALLS_LOG}"
@@ -345,10 +359,15 @@ EOF
 }
 
 @test "passes go coverage gate when all packages include test files" {
-  #R032
+  #R032-T02: Emit simulated go test output with no no-test-files entries verifies run can complete.
+  #R038-T01: Verify coverage gate passes when stubbed go tool cover reports sufficient coverage.
+  #R032 #R038
   make_go_stub 0 "with-tests"
   run bash "${FIXTURE_ROOT}/05_run_unit_tests.sh"
   [ "$status" -eq 0 ]
+  [[ "$output" == *'"gate_failed": false'* ]]
+  grep -e '-coverprofile=' "${CALLS_LOG}"
+  grep -F 'go tool cover' "${CALLS_LOG}"
 }
 
 @test "emits a single pass line after successful SQL and Go unit tests" {

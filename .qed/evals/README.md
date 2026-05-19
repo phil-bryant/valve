@@ -8,6 +8,7 @@ This directory contains recorded-only eval suites for Valve v0 bootstrapping.
 - `scripts_recorded.yaml`: shell script operability and fail-fast contract checks.
 - `repo_quality_recorded.yaml`: repo-level testing and testing-of-testing quality checks.
 - `combined_recorded.yaml`: mixed API + scripts contract checks.
+- `api_live.yaml`: live smoke checks (requires running Valve + database URL).
 - `datasets/api_recorded.jsonl`: API recorded cases.
 - `datasets/scripts_recorded.jsonl`: script recorded cases.
 - `datasets/repo_quality_recorded.jsonl`: repo-quality recorded cases.
@@ -62,6 +63,12 @@ Run only repo-level testing quality eval:
 
 ```bash
 ./11_run_llm_evals.sh repo-quality-only
+```
+
+Run live smoke eval (requires running Valve and `VALVE_DATABASE_URL`):
+
+```bash
+./11_run_llm_evals.sh live-only
 ```
 
 If QED is not at `/Users/phil/local/src/qed`, set:

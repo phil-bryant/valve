@@ -20,7 +20,7 @@ func NewHandler(service *Service) *Handler {
 // #R001: Decode register/revoke/rotate requests and dispatch to service layer.
 func (h *Handler) RegisterCredential(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeJSONStrict(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
@@ -34,7 +34,7 @@ func (h *Handler) RegisterCredential(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) RevokeCredential(w http.ResponseWriter, r *http.Request) {
 	var req RevokeRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeJSONStrict(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
@@ -48,7 +48,7 @@ func (h *Handler) RevokeCredential(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) RotateCredential(w http.ResponseWriter, r *http.Request) {
 	var req RotateRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeJSONStrict(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
@@ -64,6 +64,10 @@ func (h *Handler) RotateCredential(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListCredentials(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.URL.Query().Get("tenant_id")
 	installID := r.URL.Query().Get("install_id")
+	if err := ValidateListQuery(tenantID, installID); err != nil {
+		writeServiceError(w, err)
+		return
+	}
 	resp, err := h.service.List(r.Context(), tenantID, installID)
 	if err != nil {
 		writeServiceError(w, err)
@@ -85,7 +89,7 @@ func (h *Handler) VerificationLookup(w http.ResponseWriter, r *http.Request) {
 // #R015: Set Cache-Control header from TTL and dispatch upload target requests.
 func (h *Handler) UploadTarget(w http.ResponseWriter, r *http.Request) {
 	var req UploadTargetRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeJSONStrict(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
@@ -99,6 +103,13 @@ func (h *Handler) UploadTarget(w http.ResponseWriter, r *http.Request) {
 }
 
 // #R010: Translate domain errors into stable HTTP response codes.
+
+func decodeJSONStrict(r *http.Request, out any) error {
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	return decoder.Decode(out)
+}
+
 func writeServiceError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrInvalidInput):

@@ -64,6 +64,10 @@ func New(addr string, logger *slog.Logger, checker ReadinessChecker, handler *cr
 		return security.ServiceAuthMiddleware(serviceAuthKey, next)
 	}).Post("/v1/piston/upload-target", handler.UploadTarget)
 
+	// #R020: Return RFC 9110-compliant 405 responses so contract testers (e.g.
+	// Schemathesis unsupported_method checks) see an Allow header on unknown verbs.
+	router.MethodNotAllowed(methodNotAllowedHandler)
+
 	return &http.Server{
 		Addr:         addr,
 		Handler:      router,
@@ -92,6 +96,13 @@ func requestLogMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 // framing behaviours that valve does not intend to support. Headers are set
 // before the downstream handler runs so any handler-supplied values for the
 // same names still take precedence on explicit overwrite.
+func methodNotAllowedHandler(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Allow", "GET, HEAD, OPTIONS, POST")
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusMethodNotAllowed)
+	_, _ = w.Write([]byte(`{"error":"method not allowed"}` + "\n"))
+}
+
 func secureResponseHeadersMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()

@@ -73,6 +73,23 @@ func TestReadyzFailsWhenDatabaseUnavailable(t *testing.T) {
 	}
 }
 
+func TestMethodNotAllowedIncludesAllowHeader(t *testing.T) {
+	// #R020-T01: Unsupported HTTP methods return 405 with an Allow header for contract testing.
+	// #R020: Method-not-allowed responses include Allow for RFC 9110 and Schemathesis.
+	logger := slog.Default()
+	srv := New(":8090", logger, testChecker{}, &credentials.Handler{}, "svc-key")
+	req := httptest.NewRequest("QUERY", "/healthz", nil)
+	rec := httptest.NewRecorder()
+
+	srv.Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d", rec.Code)
+	}
+	if got := rec.Header().Get("Allow"); got == "" {
+		t.Fatalf("expected Allow header on 405 response")
+	}
+}
+
 func TestSecureResponseHeadersAreSetOnEveryRoute(t *testing.T) {
 	// #R015-T01: GET /healthz response includes X-Content-Type-Options: nosniff.
 	// #R015-T02: GET /readyz response includes X-Frame-Options: DENY.

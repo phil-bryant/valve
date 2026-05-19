@@ -26,8 +26,8 @@ if [ ! -d "${QED_ENTRYPOINT}" ]; then
   exit 1
 fi
 
-if [ "${MODE}" != "run" ] && [ "${MODE}" != "save-baseline" ] && [ "${MODE}" != "compare" ] && [ "${MODE}" != "all" ] && [ "${MODE}" != "repo-quality-only" ]; then
-  echo "Usage: ./11_run_llm_evals.sh [run|save-baseline|compare|all|repo-quality-only]"
+if [ "${MODE}" != "run" ] && [ "${MODE}" != "save-baseline" ] && [ "${MODE}" != "compare" ] && [ "${MODE}" != "all" ] && [ "${MODE}" != "repo-quality-only" ] && [ "${MODE}" != "live-only" ]; then
+  echo "Usage: ./11_run_llm_evals.sh [run|save-baseline|compare|all|repo-quality-only|live-only]"
   exit 1
 fi
 
@@ -123,6 +123,22 @@ fi
 
 if [ "${MODE}" = "repo-quality-only" ]; then
   run_suite ".qed/evals/repo_quality_recorded.yaml" ".qed/evals/results/repo-quality-recorded-report.json" ".qed/baselines/repo-quality-recorded-baseline.json"
+fi
+
+if [ "${MODE}" = "live-only" ]; then
+  if [ -z "${VALVE_DATABASE_URL:-}" ] && [ -z "${VALVE_TEST_DATABASE_URL:-}" ]; then
+    echo "ℹ️  Live QED eval skipped: set VALVE_DATABASE_URL or VALVE_TEST_DATABASE_URL."
+    exit 0
+  fi
+  if [ -z "${VALVE_BASE_URL:-}" ]; then
+    export VALVE_BASE_URL="http://127.0.0.1:8090"
+  fi
+  if ! curl -fsS "${VALVE_BASE_URL%/}/healthz" >/dev/null 2>&1; then
+    echo "ℹ️  Live QED eval expects a running Valve at ${VALVE_BASE_URL}."
+    echo "Start backend with ./09_run_backend.sh or export VALVE_BASE_URL to a reachable service."
+    exit 1
+  fi
+  run_suite ".qed/evals/api_live.yaml" ".qed/evals/results/api-live-smoke-report.json" ".qed/baselines/api-live-smoke-baseline.json"
 fi
 
 echo ""

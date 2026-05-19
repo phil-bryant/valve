@@ -35,21 +35,10 @@ Design: While waiting for `clamscan`, print periodic "scan in progress" lines us
 Tests:
 - R025-T01: Run with slow scan stub plus short heartbeat configuration and verify heartbeat output appears.
 
-R030  Statement: Persist machine-readable ClamAV summary and optional gate result.
-Design: Parse `clamav.log` into `clamav-summary.json` including `scanned_files`, `infected_files`, `exit_code`, `skipped`, and `gate_failed`; fail when `SECURITY_FAIL_ON_HIGH_CRITICAL=true` and infected files are present.
-Tests:
-- R030-T01: Run with clean scan output and verify summary fields indicate pass.
-- R030-T02: Run with infected scan output and verify gate failure output when fail-on-high is enabled.
-
 R035  Statement: Fail clearly when configured scan target is missing.
 Design: Resolve `CLAMAV_SCAN_TARGET` to an absolute path and fail non-zero with explicit "scan target not found" output when target does not exist.
 Tests:
 - R035-T01: Run with nonexistent `CLAMAV_SCAN_TARGET` and verify explicit non-zero failure.
-
-R040  Statement: Attempt one-time signature refresh and retry when database files are missing.
-Design: When `clamscan` exits `>1` and output includes `No supported database files found`, run `freshclam --stdout`, then retry `clamscan` once.
-Tests:
-- R040-T01: Simulate missing-database error on first scan and clean second scan; verify `freshclam --stdout` is invoked and scan retry succeeds.
 
 R045  Statement: Treat ClamAV execution failures as hard failures.
 Design: If `clamscan` exits `>1` after any allowed retry path, write summary artifact and fail with explicit execution-failure output.
@@ -60,6 +49,24 @@ R050  Statement: Emit deterministic completion output including report location.
 Design: Print lane completion markers and final success line containing `Reports: <dir>` so automation can find artifacts.
 Tests:
 - R050-T01: Run successful scan path and verify final completion line contains `Reports:`.
+
+R030  Statement: Persist machine-readable ClamAV summary and optional gate result.
+Design: Parse `clamav.log` into `clamav-summary.json` including `scanned_files`, `infected_files`, `exit_code`, `skipped`, `execution_failed`, and `gate_failed`; fail when `scanned_files` is zero for non-skipped runs; fail when infected files are present (AV always gates on infection regardless of `SECURITY_FAIL_ON_HIGH_CRITICAL`).
+Tests:
+- R030-T01: Run with clean scan output and verify summary fields indicate pass.
+- R030-T02: Run with infected scan output and verify gate failure output when fail-on-high is enabled.
+- R030-T03: Run with zero scanned files and verify execution_failed gate behavior.
+
+R040  Statement: Attempt one-time signature refresh and retry when database files are missing.
+Design: When `clamscan` exits `>1` and output includes `No supported database files found`, run `freshclam --stdout`, then retry `clamscan` once; fail explicitly when `freshclam` exits non-zero.
+Tests:
+- R040-T01: Simulate missing-database error on first scan and clean second scan; verify `freshclam --stdout` is invoked and scan retry succeeds.
+- R040-T02: Run with `freshclam` failure and verify explicit non-zero failure before retry scan.
+
+R055  Statement: Optional EICAR end-to-end proof validates the real ClamAV toolchain.
+Design: When `RUN_CLAMAV_E2E=true`, scan `tests/fixtures/eicar.txt` with real `clamscan` and require infected detection.
+Tests:
+- R055-T01: Run with real `clamscan` and `RUN_CLAMAV_E2E=true` and verify EICAR detection succeeds.
 
 ## Changelog
 

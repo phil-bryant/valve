@@ -254,3 +254,48 @@ PY
   [ "$status" -eq 0 ]
   [[ "$output" == *"AV checks completed. Reports:"* ]]
 }
+
+@test "fails when scanner reports zero scanned files" {
+  #R030-T03: Run with zero scanned files verifies execution_failed gate behavior.
+  #R030
+  cat > "${STUB_BIN}/clamscan" <<'EOF'
+#!/usr/bin/env bash
+echo "Scanned files: 0"
+echo "Infected files: 0"
+exit 0
+EOF
+  chmod +x "${STUB_BIN}/clamscan"
+  run env PATH="${PATH}" \
+    bash "${FIXTURE_ROOT}/08_run_av_checks.sh"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"scanner reported zero scanned files"* ]]
+}
+
+@test "fails when freshclam returns non-zero during missing-db retry" {
+  #R040-T02: Run with freshclam failure verifies explicit non-zero failure before retry scan.
+  #R040
+  make_clamscan_stub_missing_db_then_clean
+  cat > "${STUB_BIN}/freshclam" <<'EOF'
+#!/usr/bin/env bash
+echo "freshclam failed"
+exit 2
+EOF
+  chmod +x "${STUB_BIN}/freshclam"
+  export CLAMSCAN_STATE_FILE="${TEST_TMPDIR}/clamscan-freshclam-fail.state"
+  run env CLAMSCAN_STATE_FILE="${CLAMSCAN_STATE_FILE}" PATH="${PATH}" \
+    bash "${FIXTURE_ROOT}/08_run_av_checks.sh"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"freshclam failed with exit code 2"* ]]
+}
+
+@test "EICAR end-to-end detects infection when RUN_CLAMAV_E2E=true" {
+  #R055-T01: Run with real clamscan against EICAR fixture verifies infected_files >= 1.
+  #R055
+  if ! command -v clamscan >/dev/null 2>&1; then
+    skip "clamscan not installed"
+  fi
+  run env RUN_CLAMAV=false RUN_CLAMAV_E2E=true PATH="$(command -v clamscan | xargs dirname):${PATH}" \
+    bash "${FIXTURE_ROOT}/08_run_av_checks.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ClamAV E2E detected EICAR"* ]]
+}

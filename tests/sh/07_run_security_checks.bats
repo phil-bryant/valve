@@ -560,7 +560,7 @@ teardown() {
   make_detect_secrets_stub '{"results":{}}'
   make_gosec_stub '{"Issues":[]}'
   make_govulncheck_stub '{}'
-  run env RUN_DAST=false DETECT_SECRETS_EXPECT_ARGS_CONTAIN="--exclude-files (^|/)\\.gomodcache/|(^|/)requirements/.*-requirements\\.md$|(^|/)\\.cursor/plans/.*\\.plan\\.md$|(^|/)\\.qed/evals/results/.*\\.json$" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+  run env RUN_DAST=false DETECT_SECRETS_EXPECT_ARGS_CONTAIN="--exclude-files (^|/)\\.gomodcache/|(^|/)requirements/.*-requirements\\.md$|(^|/)\\.cursor/plans/.*\\.plan\\.md$|(^|/)\\.qed/evals/results/.*\\.json$|(^|/)\\.security-reports/.*\\.(json|log)$" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
     bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 0 ]
 }
@@ -1172,4 +1172,26 @@ EOF
     bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Security checks completed. Reports:"* ]]
+}
+
+@test "canonical openapi includes credential routes" {
+  #R065-T01: Verify openapi defines register and verification paths.
+  #R065
+  run grep -F "/v1/valve/credentials/register" "${FIXTURE_ROOT}/openapi/valve.v1.yaml"
+  [ "$status" -eq 0 ]
+  run grep -F "/v1/valve/credentials/{credential_id}/verification" "${FIXTURE_ROOT}/openapi/valve.v1.yaml"
+  [ "$status" -eq 0 ]
+}
+
+@test "defaults schemathesis mode and example budget" {
+  #R070-T01: Verify script defaults SCHEMATHESIS_MODE to all and max examples to 200.
+  #R070
+  run grep -F 'SCHEMATHESIS_MODE="${SCHEMATHESIS_MODE:-all}"' "${FIXTURE_ROOT}/07_run_security_checks.sh"
+  [ "$status" -eq 0 ]
+  run grep -F 'SCHEMATHESIS_MAX_EXAMPLES="${SCHEMATHESIS_MAX_EXAMPLES:-200}"' "${FIXTURE_ROOT}/07_run_security_checks.sh"
+  [ "$status" -eq 0 ]
+  run grep -F 'SCHEMATHESIS_CHECKS="${SCHEMATHESIS_CHECKS:-' "${FIXTURE_ROOT}/07_run_security_checks.sh"
+  [ "$status" -eq 0 ]
+  run grep -F 'VALVE_DEV_AUTH_ALLOW_ALL="${VALVE_DEV_AUTH_ALLOW_ALL:-true}"' "${FIXTURE_ROOT}/07_run_security_checks.sh"
+  [ "$status" -eq 0 ]
 }

@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"strings"
+	"unicode/utf8"
 )
 
 // #R001: Validate register payloads, mode constraints, and key requirements.
@@ -90,6 +92,23 @@ func ValidateRotate(req RotateRequest, allowEmptyActor bool, hmacEnabled bool) e
 		if len(decoded) != ed25519.PublicKeySize {
 			return errors.New("new_public_key has invalid ed25519 key length")
 		}
+	}
+	return nil
+}
+
+// #R020: Reject list query parameters that are empty, oversized, or not valid UTF-8.
+func ValidateListQuery(tenantID string, installID string) error {
+	if tenantID == "" || installID == "" {
+		return fmt.Errorf("%w: tenant_id and install_id are required", ErrInvalidInput)
+	}
+	if len(tenantID) > 256 || len(installID) > 256 {
+		return fmt.Errorf("%w: tenant_id and install_id must be at most 256 characters", ErrInvalidInput)
+	}
+	if strings.Contains(tenantID, "\x00") || strings.Contains(installID, "\x00") {
+		return fmt.Errorf("%w: tenant_id and install_id must not contain NUL bytes", ErrInvalidInput)
+	}
+	if !utf8.ValidString(tenantID) || !utf8.ValidString(installID) {
+		return fmt.Errorf("%w: tenant_id and install_id must be valid UTF-8", ErrInvalidInput)
 	}
 	return nil
 }

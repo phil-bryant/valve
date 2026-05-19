@@ -10,7 +10,7 @@ REPORT_DIR="${SECURITY_REPORT_DIR:-./.security-reports}"
 RUN_SAST="${RUN_SAST:-true}"
 RUN_DAST="${RUN_DAST:-true}"
 FAIL_ON_HIGH_CRITICAL="${SECURITY_FAIL_ON_HIGH_CRITICAL:-true}"
-DETECT_SECRETS_EXCLUDE_FILES_REGEX="${DETECT_SECRETS_EXCLUDE_FILES_REGEX:-(^|/)\\.gomodcache/|(^|/)requirements/.*-requirements\\.md$|(^|/)\\.cursor/plans/.*\\.plan\\.md$|(^|/)\\.qed/evals/results/.*\\.json$}"
+DETECT_SECRETS_EXCLUDE_FILES_REGEX="${DETECT_SECRETS_EXCLUDE_FILES_REGEX:-(^|/)\\.gomodcache/|(^|/)requirements/.*-requirements\\.md$|(^|/)\\.cursor/plans/.*\\.plan\\.md$|(^|/)\\.qed/evals/results/.*\\.json$|(^|/)\\.security-reports/.*\\.(json|log)$}"
 DETECT_SECRETS_FORCE_ALL_PLUGINS="${DETECT_SECRETS_FORCE_ALL_PLUGINS:-false}"
 DAST_BASE_URL="${DAST_BASE_URL:-}"
 DAST_ZAP_TARGET_URL="${DAST_ZAP_TARGET_URL:-}"
@@ -31,7 +31,12 @@ RUN_SCHEMATHESIS="${RUN_SCHEMATHESIS:-true}"
 SCHEMATHESIS_SCHEMA_PATH="${SCHEMATHESIS_SCHEMA_PATH:-${SCRIPT_DIR}/openapi/valve.v1.yaml}"
 SCHEMATHESIS_TIMEOUT_SECONDS="${SCHEMATHESIS_TIMEOUT_SECONDS:-180}"
 SCHEMATHESIS_SEED="${SCHEMATHESIS_SEED:-424242}"
-SCHEMATHESIS_MAX_EXAMPLES="${SCHEMATHESIS_MAX_EXAMPLES:-25}"
+SCHEMATHESIS_MODE="${SCHEMATHESIS_MODE:-all}"
+SCHEMATHESIS_MAX_EXAMPLES="${SCHEMATHESIS_MAX_EXAMPLES:-200}"
+SCHEMATHESIS_CHECKS="${SCHEMATHESIS_CHECKS:-not_a_server_error,status_code_conformance,content_type_conformance,response_headers_conformance,response_schema_conformance,negative_data_rejection,missing_required_header,unsupported_method}"
+DAST_ZAP_TARGET_URLS="${DAST_ZAP_TARGET_URLS:-}"
+DAST_RUN_ID="${DAST_RUN_ID:-}"
+DAST_CLEANUP_TENANT_PREFIX="${DAST_CLEANUP_TENANT_PREFIX:-dast_run_}"
 VALVE_DATABASE_1PSA_ITEM="${VALVE_DATABASE_1PSA_ITEM:-localhost_postgres_valve}"
 VALVE_DATABASE_NAME="${VALVE_DATABASE_NAME:-valve}"
 VALVE_DATABASE_SSLMODE="${VALVE_DATABASE_SSLMODE:-disable}"
@@ -42,6 +47,7 @@ DAST_APP_PID=""
 # both `go run` and the spawned valve binary (the binary is a grandchild that
 # would otherwise be reparented to init and keep holding the listen port).
 DAST_APP_PGID=""
+DAST_DATABASE_URL=""
 
 if [[ "${REPORT_DIR}" != /* ]]; then
   REPORT_DIR="${SCRIPT_DIR}/${REPORT_DIR#./}"
@@ -63,6 +69,40 @@ cleanup_dast_app() {
 }
 
 trap cleanup_dast_app EXIT
+
+resolve_dast_ignored_alert_refs() {
+  local base_url="$1"
+  local refs="${DAST_IGNORED_ALERT_REFS}"
+  if [[ "${base_url}" == https://* ]]; then
+    refs="$(python3 - "${refs}" <<'PY'
+import sys
+refs = [value.strip() for value in sys.argv[1].split(",") if value.strip()]
+refs = [value for value in refs if value != "10106"]
+print(",".join(refs))
+PY
+)"
+  fi
+  printf '%s' "${refs}"
+}
+
+cleanup_dast_tenant_data() {
+  local database_url="$1"
+  local tenant_prefix="$2"
+  if [[ -z "${database_url}" ]] || [[ -z "${tenant_prefix}" ]]; then
+    return 0
+  fi
+  if ! command -v psql >/dev/null 2>&1; then
+    echo "ℹ️  DAST tenant cleanup skipped: psql not available."
+    return 0
+  fi
+  echo "▶ Cleaning DAST tenant rows with prefix: ${tenant_prefix}"
+  if ! psql "${database_url}" -v ON_ERROR_STOP=1 \
+    -c "DELETE FROM valve_audit_log WHERE tenant_id LIKE '${tenant_prefix}%';" \
+    -c "DELETE FROM valve_credentials WHERE tenant_id LIKE '${tenant_prefix}%';" \
+    >/dev/null 2>&1; then
+    echo "⚠️  DAST tenant cleanup failed; audit/credential rows may remain."
+  fi
+}
 
 require_command() {
   local command_name="$1"
@@ -811,6 +851,11 @@ run_dast_lane() {
       echo "❌ Failed to compose VALVE_DATABASE_URL from 1psa fields."
       exit 1
     fi
+    DAST_DATABASE_URL="${database_url}"
+    if [[ -z "${DAST_RUN_ID}" ]]; then
+      DAST_RUN_ID="${DAST_CLEANUP_TENANT_PREFIX}$(python3 -c 'import uuid; print(uuid.uuid4().hex[:12])')"
+    fi
+    echo "ℹ️  DAST run id (tenant cleanup prefix): ${DAST_RUN_ID}"
     local dast_bind_addr=""
     if ! dast_bind_addr="$(resolve_dast_bind_address "${effective_dast_base_url}")"; then
       echo "❌ Unable to derive bind address from DAST_BASE_URL: ${effective_dast_base_url}"
@@ -854,6 +899,7 @@ run_dast_lane() {
     VALVE_ADDR="${dast_bind_addr}" \
     VALVE_DATABASE_URL="${database_url}" \
     VALVE_UPLOAD_ENDPOINT="${upload_endpoint}" \
+    VALVE_DEV_AUTH_ALLOW_ALL="${VALVE_DEV_AUTH_ALLOW_ALL:-true}" \
     VALVE_SERVICE_AUTH_KEY="${VALVE_SERVICE_AUTH_KEY}" \
       python3 -c '
 import os, sys
@@ -867,7 +913,20 @@ os.execvp(sys.argv[1], sys.argv[1:])
   # ZAP CLI's quick scan, which refuses entries that do not return 2xx, has a
   # valid starting point even when the service has no `/` handler. Operators
   # can override DAST_ZAP_TARGET_URL to point at a richer crawl surface.
-  local effective_zap_target_url="${DAST_ZAP_TARGET_URL:-${effective_dast_base_url%/}/healthz}"
+  local effective_zap_target_url="${DAST_ZAP_TARGET_URL:-}"
+  if [[ -z "${effective_zap_target_url}" ]]; then
+    if [[ -n "${DAST_ZAP_TARGET_URLS}" ]]; then
+      effective_zap_target_url="${DAST_ZAP_TARGET_URLS%%,*}"
+    else
+      effective_zap_target_url="${effective_dast_base_url%/}/healthz"
+    fi
+  fi
+  local -a zap_target_urls=("${effective_zap_target_url}")
+  if [[ -n "${DAST_ZAP_TARGET_URLS}" ]]; then
+    IFS=',' read -r -a zap_target_urls <<< "${DAST_ZAP_TARGET_URLS}"
+  fi
+  local effective_dast_ignored_refs
+  effective_dast_ignored_refs="$(resolve_dast_ignored_alert_refs "${effective_dast_base_url}")"
   local zap_runner_cmd=""
   local zap_runner_mode=""
   if zap_runner_cmd="$(resolve_zap_baseline)"; then
@@ -947,14 +1006,18 @@ os.execvp(sys.argv[1], sys.argv[1:])
     set +e
     #R040: Use the `${arr[@]+...}` pattern so bash's `set -u` does not trip on
     # an empty extra-args array when no service key is available.
+    local -a schemathesis_cmd=(
+      schemathesis run "${SCHEMATHESIS_SCHEMA_PATH}"
+      --url "${effective_dast_base_url}"
+      --mode "${SCHEMATHESIS_MODE}"
+      --seed "${SCHEMATHESIS_SEED}"
+      --max-examples "${SCHEMATHESIS_MAX_EXAMPLES}"
+      --checks "${SCHEMATHESIS_CHECKS}"
+      --report junit
+      --report-junit-path "${REPORT_DIR}/schemathesis-junit.xml"
+    )
     run_with_timeout "${SCHEMATHESIS_TIMEOUT_SECONDS}" \
-      schemathesis run "${SCHEMATHESIS_SCHEMA_PATH}" \
-      --url "${effective_dast_base_url}" \
-      --mode positive \
-      --seed "${SCHEMATHESIS_SEED}" \
-      --max-examples "${SCHEMATHESIS_MAX_EXAMPLES}" \
-      --report junit \
-      --report-junit-path "${REPORT_DIR}/schemathesis-junit.xml" \
+      "${schemathesis_cmd[@]}" \
       ${schemathesis_extra_args[@]+"${schemathesis_extra_args[@]}"} \
       > "${REPORT_DIR}/schemathesis.log" 2>&1
     schemathesis_exit=$?
@@ -979,7 +1042,6 @@ os.execvp(sys.argv[1], sys.argv[1:])
     "Dynamic web scanner for common HTTP application vulnerabilities." \
     "Runs baseline scan mode and emits JSON alert report artifacts." \
     "https://www.zaproxy.org/"
-  echo "▶ Running real DAST scan with OWASP ZAP baseline against ${zap_target_url}"
   local zap_report_path="${REPORT_DIR}/dast-zap-report.json"
   local zap_log_path="${REPORT_DIR}/dast-zap.log"
   #R050: Print DAST execution context so operators can observe live scan behavior.
@@ -988,58 +1050,67 @@ os.execvp(sys.argv[1], sys.argv[1:])
   echo "▶ DAST report artifact: ${zap_report_path}"
   echo "▶ DAST live log artifact: ${zap_log_path}"
   local zap_exit=0
-  set +e
-  if [[ "${zap_runner_mode}" == "baseline" && "${zap_runner_cmd}" == "zap-baseline.py" ]]; then
-    PYTHONUNBUFFERED=1 run_with_timeout "${DAST_ZAP_TIMEOUT_SECONDS}" \
-      zap-baseline.py \
-      -t "${zap_target_url}" \
-      -J "${zap_report_path}" \
-      -m 1 2>&1 | tee "${zap_log_path}"
-    zap_exit=${PIPESTATUS[0]}
-  elif [[ "${zap_runner_mode}" == "baseline" ]]; then
-    run_with_timeout "${DAST_ZAP_TIMEOUT_SECONDS}" \
-      python3 -u "${zap_runner_cmd}" \
-      -t "${zap_target_url}" \
-      -J "${zap_report_path}" \
-      -m 1 2>&1 | tee "${zap_log_path}"
-    zap_exit=${PIPESTATUS[0]}
-  else
-    run_with_timeout "${DAST_ZAP_TIMEOUT_SECONDS}" \
-      "${zap_runner_cmd}" \
-      -cmd \
-      -quickurl "${zap_target_url}" \
-      -quickout "${zap_report_path}" \
-      -quickprogress 2>&1 | tee "${zap_log_path}"
-    zap_exit=${PIPESTATUS[0]}
-  fi
-  set -e
+  local zap_target_url=""
+  : > "${zap_log_path}"
+  for zap_target_url in "${zap_target_urls[@]}"; do
+    zap_target_url="${zap_target_url#"${zap_target_url%%[![:space:]]*}"}"
+    zap_target_url="${zap_target_url%"${zap_target_url##*[![:space:]]}"}"
+    [[ -z "${zap_target_url}" ]] && continue
+    echo "▶ Running real DAST scan with OWASP ZAP baseline against ${zap_target_url}"
+    local zap_iteration_exit=0
+    set +e
+    if [[ "${zap_runner_mode}" == "baseline" && "${zap_runner_cmd}" == "zap-baseline.py" ]]; then
+      PYTHONUNBUFFERED=1 run_with_timeout "${DAST_ZAP_TIMEOUT_SECONDS}" \
+        zap-baseline.py \
+        -t "${zap_target_url}" \
+        -J "${zap_report_path}" \
+        -m 1 2>&1 | tee -a "${zap_log_path}"
+      zap_iteration_exit=${PIPESTATUS[0]}
+    elif [[ "${zap_runner_mode}" == "baseline" ]]; then
+      run_with_timeout "${DAST_ZAP_TIMEOUT_SECONDS}" \
+        python3 -u "${zap_runner_cmd}" \
+        -t "${zap_target_url}" \
+        -J "${zap_report_path}" \
+        -m 1 2>&1 | tee -a "${zap_log_path}"
+      zap_iteration_exit=${PIPESTATUS[0]}
+    else
+      run_with_timeout "${DAST_ZAP_TIMEOUT_SECONDS}" \
+        "${zap_runner_cmd}" \
+        -cmd \
+        -quickurl "${zap_target_url}" \
+        -quickout "${zap_report_path}" \
+        -quickprogress 2>&1 | tee -a "${zap_log_path}"
+      zap_iteration_exit=${PIPESTATUS[0]}
+    fi
+    set -e
+    if [[ "${zap_iteration_exit}" -gt "${zap_exit}" ]]; then
+      zap_exit="${zap_iteration_exit}"
+    fi
+    if [[ "${zap_iteration_exit}" -eq 124 ]]; then
+      echo "❌ OWASP ZAP baseline scan timed out after ${DAST_ZAP_TIMEOUT_SECONDS}s."
+      exit 1
+    fi
+    if [[ "${zap_iteration_exit}" -eq 3 ]]; then
+      echo "❌ OWASP ZAP baseline scan failed to execute."
+      exit 1
+    fi
+    if grep -q "Failed to attack the URL" "${zap_log_path}" 2>/dev/null; then
+      echo "❌ OWASP ZAP could not scan ${zap_target_url}: entry URL did not return 2xx."
+      echo "▶ ZAP output:"
+      print_indented_log "${zap_log_path}"
+      echo "Set DAST_ZAP_TARGET_URL to a path that returns 200 (e.g. \${DAST_BASE_URL}/healthz) and rerun."
+      exit 1
+    fi
+  done
+  zap_target_url="${effective_zap_target_url}"
 
-  if [[ "$zap_exit" -eq 124 ]]; then
-    echo "❌ OWASP ZAP baseline scan timed out after ${DAST_ZAP_TIMEOUT_SECONDS}s."
-    exit 1
-  fi
-  if [[ "$zap_exit" -eq 3 ]]; then
-    echo "❌ OWASP ZAP baseline scan failed to execute."
-    exit 1
-  fi
   if [[ ! -s "${zap_report_path}" ]]; then
     echo "❌ OWASP ZAP baseline report was not generated."
     exit 1
   fi
-  #R035: ZAP CLI's quick scan exits 0 even when the entry URL does not return
-  # 2xx, leaving the summary to misleadingly report "no alerts" when nothing
-  # was actually scanned. Detect this exact failure mode in the live log and
-  # turn it into an explicit fail-fast with actionable remediation.
-  if grep -q "Failed to attack the URL" "${zap_log_path}" 2>/dev/null; then
-    echo "❌ OWASP ZAP could not scan ${zap_target_url}: entry URL did not return 2xx."
-    echo "▶ ZAP output:"
-    print_indented_log "${zap_log_path}"
-    echo "Set DAST_ZAP_TARGET_URL to a path that returns 200 (e.g. \${DAST_BASE_URL}/healthz) and rerun."
-    exit 1
-  fi
 
   #R040: Summarize DAST findings and enforce medium/high gate policy.
-  python3 - <<'PY' "${REPORT_DIR}/dast-summary.json" "${effective_dast_base_url}" "${zap_target_url}" "${zap_report_path}" "${FAIL_ON_HIGH_CRITICAL}" "${zap_exit}" "${DAST_IGNORED_ALERT_REFS}" "${schemathesis_exit}" "${RUN_SCHEMATHESIS}"
+  python3 - <<'PY' "${REPORT_DIR}/dast-summary.json" "${effective_dast_base_url}" "${zap_target_url}" "${zap_report_path}" "${FAIL_ON_HIGH_CRITICAL}" "${zap_exit}" "${effective_dast_ignored_refs}" "${schemathesis_exit}" "${RUN_SCHEMATHESIS}"
 import json
 import sys
 from urllib.parse import urlparse
@@ -1145,6 +1216,9 @@ if gate_failed:
     print("❌ Dynamic Application Security Testing (DAST) gate failed: Medium/High alerts or Schemathesis contract failures detected.")
     sys.exit(1)
 PY
+  if [[ -n "${DAST_DATABASE_URL}" ]] && [[ -n "${DAST_RUN_ID}" ]]; then
+    cleanup_dast_tenant_data "${DAST_DATABASE_URL}" "${DAST_RUN_ID}"
+  fi
   if [[ -n "${DAST_APP_PID}" ]] && kill -0 "${DAST_APP_PID}" >/dev/null 2>&1; then
     echo "▶ Stopping auto-booted valve service after DAST"
     #R030: Tear down the entire auto-boot process group so the spawned valve

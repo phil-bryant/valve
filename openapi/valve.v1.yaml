@@ -2,10 +2,11 @@ openapi: 3.0.3
 info:
   title: Valve API
   version: 1.0.0
-  description: Minimal OpenAPI contract used for DAST Schemathesis preflight and baseline contract coverage.
+  description: OpenAPI contract for DAST Schemathesis and baseline contract coverage of credential and upload-target routes.
 paths:
   /healthz:
     get:
+      operationId: healthz
       summary: Health probe
       responses:
         "200":
@@ -20,8 +21,155 @@ paths:
                 properties:
                   ok:
                     type: boolean
+  /v1/valve/credentials/register:
+    post:
+      operationId: registerCredential
+      summary: Register a tenant-bound upload credential
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "200":
+          description: Credential registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisterResponse"
+              links:
+                RegisterToRevoke:
+                  operationId: revokeCredential
+                  requestBody: $response.body#/credential_id
+                RegisterToRotate:
+                  operationId: rotateCredential
+                  requestBody: $response.body#/credential_id
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/valve/credentials/revoke:
+    post:
+      operationId: revokeCredential
+      summary: Revoke an active credential
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RevokeRequest"
+      responses:
+        "200":
+          description: Credential revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevokeResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/valve/credentials/rotate:
+    post:
+      operationId: rotateCredential
+      summary: Rotate a credential to a new key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RotateRequest"
+      responses:
+        "200":
+          description: Credential rotated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RotateResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/valve/credentials/:
+    get:
+      operationId: listCredentials
+      summary: List credentials for a tenant and install
+      parameters:
+        - name: tenant_id
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: install_id
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Credential list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/valve/credentials/{credential_id}/verification:
+    get:
+      operationId: verificationLookup
+      summary: Internal verification lookup for Manifold
+      security:
+        - ValveServiceKey: []
+      parameters:
+        - name: credential_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Verification metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationResponse"
+        "401":
+          description: Missing or invalid service authentication key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /v1/piston/upload-target:
     post:
+      operationId: uploadTarget
       summary: Discover active upload target for a provisioned installation
       security:
         - ValveServiceKey: []
@@ -39,11 +187,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/UploadTargetResponse"
         "400":
-          description: Malformed request body or missing required identifiers.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/BadRequest"
         "401":
           description: Invalid or revoked credential, or missing service authentication.
           content:
@@ -51,36 +195,294 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
-          description: Credential is not active for discovery.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/Forbidden"
         "404":
-          description: Unknown install or credential.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/NotFound"
         "409":
-          description: Tenant and account context mismatch.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/Conflict"
         "500":
-          description: Transient control-plane failure.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/InternalError"
 components:
   securitySchemes:
     ValveServiceKey:
       type: apiKey
       in: header
       name: X-Valve-Service-Key
+  responses:
+    BadRequest:
+      description: Malformed request or invalid input
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Unauthorized or inactive credential
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: Tenant mismatch or invalid credential state
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    InternalError:
+      description: Transient control-plane failure
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
   schemas:
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - install_id
+        - app_bundle_id
+        - platform
+        - credential_mode
+        - public_key
+      properties:
+        tenant_id:
+          type: string
+          minLength: 1
+        actor_user_id:
+          type: string
+          nullable: true
+          nullable: true
+          nullable: true
+        install_id:
+          type: string
+          minLength: 1
+        app_bundle_id:
+          type: string
+          minLength: 1
+        app_version:
+          type: string
+          nullable: true
+          nullable: true
+        app_build:
+          type: string
+          nullable: true
+          nullable: true
+        platform:
+          type: string
+          enum:
+            - macOS
+        device_label:
+          type: string
+          nullable: true
+          nullable: true
+          nullable: true
+        credential_mode:
+          type: string
+          enum:
+            - ed25519
+            - hmac_sha256
+        public_key:
+          type: string
+          minLength: 44
+          maxLength: 44
+          description: Base64-encoded Ed25519 public key (32 raw bytes).
+          example: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    RegisterResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - credential_id
+        - tenant_scope
+        - install_id
+        - upload_endpoint
+        - signing_algorithm
+        - status
+      properties:
+        credential_id:
+          type: string
+        tenant_scope:
+          type: string
+        install_id:
+          type: string
+        upload_endpoint:
+          type: string
+          format: uri
+        signing_algorithm:
+          type: string
+        secret:
+          type: string
+        status:
+          type: string
+    RevokeRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - credential_id
+      properties:
+        tenant_id:
+          type: string
+          minLength: 1
+        actor_user_id:
+          type: string
+          nullable: true
+          nullable: true
+          nullable: true
+        credential_id:
+          type: string
+          minLength: 1
+        reason:
+          type: string
+          nullable: true
+    RevokeResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - credential_id
+        - status
+      properties:
+        credential_id:
+          type: string
+        status:
+          type: string
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+    RotateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - old_credential_id
+        - install_id
+        - credential_mode
+        - new_public_key
+      properties:
+        tenant_id:
+          type: string
+          minLength: 1
+        actor_user_id:
+          type: string
+          nullable: true
+          nullable: true
+          nullable: true
+        old_credential_id:
+          type: string
+          minLength: 1
+        install_id:
+          type: string
+          minLength: 1
+        credential_mode:
+          type: string
+          enum:
+            - ed25519
+            - hmac_sha256
+        new_public_key:
+          type: string
+          minLength: 44
+          maxLength: 44
+          example: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+        app_version:
+          type: string
+          nullable: true
+          nullable: true
+        app_build:
+          type: string
+          nullable: true
+          nullable: true
+        device_label:
+          type: string
+          nullable: true
+          nullable: true
+          nullable: true
+    RotateResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - old_credential_id
+        - old_status
+        - new_credential_id
+        - tenant_scope
+        - install_id
+        - signing_algorithm
+        - status
+      properties:
+        old_credential_id:
+          type: string
+        old_status:
+          type: string
+        new_credential_id:
+          type: string
+        tenant_scope:
+          type: string
+        install_id:
+          type: string
+        signing_algorithm:
+          type: string
+        status:
+          type: string
+        secret:
+          type: string
+    ListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - credentials
+      properties:
+        credentials:
+          type: array
+          items:
+            $ref: "#/components/schemas/CredentialRecord"
+    CredentialRecord:
+      type: object
+      additionalProperties: true
+      properties:
+        credential_id:
+          type: string
+        tenant_id:
+          type: string
+        install_id:
+          type: string
+        status:
+          type: string
+        credential_mode:
+          type: string
+    VerificationResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - credential_id
+        - tenant_id
+        - install_id
+        - app_bundle_id
+        - credential_mode
+        - status
+      properties:
+        credential_id:
+          type: string
+        tenant_id:
+          type: string
+        install_id:
+          type: string
+        app_bundle_id:
+          type: string
+        credential_mode:
+          type: string
+        public_key:
+          type: string
+        status:
+          type: string
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
     UploadTargetRequest:
       type: object
       additionalProperties: false

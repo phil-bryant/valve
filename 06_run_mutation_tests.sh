@@ -219,10 +219,29 @@ score = float(data.get("test_efficacy", 0.0))
 mutator_coverage = float(data.get("mutations_coverage", 0.0))
 
 timed_out = 0
+by_package = {}
 for file_entry in data.get("files", []) or []:
+    file_path = str(file_entry.get("file", "unknown"))
+    parts = file_path.split("/")
+    if len(parts) >= 2:
+        package_key = "/".join(parts[:2])
+    else:
+        package_key = parts[0]
+    entry = by_package.setdefault(
+        package_key,
+        {"killed": 0, "lived": 0, "not_covered": 0, "timed_out": 0},
+    )
     for mutation in file_entry.get("mutations", []) or []:
-        if str(mutation.get("status", "")).upper() == "TIMED OUT":
+        status = str(mutation.get("status", "")).upper()
+        if status == "TIMED OUT":
             timed_out += 1
+            entry["timed_out"] += 1
+        elif status == "KILLED":
+            entry["killed"] += 1
+        elif status == "LIVED":
+            entry["lived"] += 1
+        elif status == "NOT COVERED":
+            entry["not_covered"] += 1
 
 score_failed = score < score_threshold
 coverage_failed = mutator_coverage < coverage_threshold
@@ -243,9 +262,17 @@ summary = {
     "score_failed": score_failed,
     "coverage_failed": coverage_failed,
     "gate_failed": gate_failed,
+    "by_package": by_package,
 }
 
 summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+
+for package_name, stats in sorted(by_package.items()):
+    print(
+        f"ℹ️  Mutation package {package_name}: "
+        f"killed={stats['killed']} lived={stats['lived']} "
+        f"not_covered={stats['not_covered']} timed_out={stats['timed_out']}"
+    )
 
 if score_failed:
     print(f"❌ FAIL: Mutation score {score}% is below threshold {score_threshold}%.")

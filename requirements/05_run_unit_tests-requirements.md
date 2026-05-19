@@ -66,6 +66,11 @@ Tests:
 - R037-T01: Verify Swift test invocation uses `swift test --package-path` with the correct package directory.
 - R037-T02: Force missing Swift package directory and verify explicit non-zero failure output.
 
+R038  Statement: Enforce a minimum Go line coverage threshold after unit tests pass.
+Design: After `go test ./...`, measure coverage for `GO_COVERAGE_PACKAGES` (default core internal packages) and fail when total statement coverage is below `GO_COVERAGE_THRESHOLD` (default 70); write `coverage-summary.json` under `.security-reports/`.
+Tests:
+- R038-T01: Emit coverage profile below threshold and verify explicit non-zero failure output.
+
 ## Changelog
 
 - 2026-05-16: Numbered test bullets with R###-T## scheme.

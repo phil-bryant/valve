@@ -257,6 +257,48 @@ Verification rules for Manifold:
 7. Payload tenant/install fields (if present) are mismatch checks only.
 8. Persisted identity uses credential-derived tenant/install values.
 
+## Security Checks (Operator Runbook)
+
+Recommended local gate order:
+
+```bash
+./05_run_unit_tests.sh
+./06_run_mutation_tests.sh
+./07_run_security_checks.sh
+./08_run_av_checks.sh
+./11_run_llm_evals.sh run
+```
+
+DAST (`07_run_security_checks.sh`) notes:
+
+- OpenAPI contract: `openapi/valve.v1.yaml` (credential routes + upload-target).
+- Schemathesis defaults: `--mode all`, `--max-examples 200`, core response checks (override with `SCHEMATHESIS_MODE`, `SCHEMATHESIS_MAX_EXAMPLES`, `SCHEMATHESIS_CHECKS`; set `SCHEMATHESIS_CHECKS=all` only when the OpenAPI schema fully matches validation rules).
+- DAST auto-boot sets `VALVE_DEV_AUTH_ALLOW_ALL=true` so contract tests can exercise register/revoke/rotate without actor setup.
+- For nightly exploration, rotate `SCHEMATHESIS_SEED=$(date +%s)`.
+- Production HTTPS DAST: set `DAST_BASE_URL=https://...` (alert `10106` is auto-removed from ignored refs for https URLs).
+- Multi-target ZAP: `DAST_ZAP_TARGET_URLS="${DAST_BASE_URL}/healthz,${DAST_BASE_URL}/readyz"`.
+- Auto-boot assigns `DAST_RUN_ID` and cleans `dast_run_*` tenant rows after the lane.
+
+AV (`08_run_av_checks.sh`) notes:
+
+- Prove toolchain end-to-end: `RUN_CLAMAV_E2E=true ./08_run_av_checks.sh` (requires real `clamscan`).
+- Stale signatures hard-fail after `CLAMAV_SIGNATURE_MAX_AGE_HOURS_HARD_FAIL` hours (default 168).
+- Allowlist noisy signatures: `CLAMAV_ALLOWLIST_SIGNATURES=Sig.Name`.
+- AV infections always gate-fail; do not disable AV by toggling `SECURITY_FAIL_ON_HIGH_CRITICAL`.
+
+Fuzz tests:
+
+```bash
+./12_run_fuzz.sh
+```
+
+How to interpret fuzz output:
+
+- `new interesting` means new coverage-expanding inputs, not confirmed bugs.
+- `new interesting: 0` on later runs is expected when similar inputs were already discovered and cached by Go fuzzing.
+- Actionable signal is a failing fuzz target (`❌ FAIL`, panic, crash, or failed assertion), not the `new interesting` count.
+- To force rediscovery behavior from a clean local cache, run `go clean -fuzzcache` before fuzzing.
+
 ## Tests
 
 Run all tests:
@@ -273,6 +315,12 @@ Integration tests use a real Postgres when one of these env vars is set:
 If neither is set, integration tests are skipped.
 
 ## Production TODOs
+
+### Future test epics (tracked when features land)
+
+- Load and soak testing for credential register/revoke/rotate throughput.
+- Chaos testing for database failures during rotate transactions and partial audit writes.
+- mTLS and KMS contract tests once production hardening ships.
 
 - Replace dev authorizer with primary backend authorization integration.
 - Replace placeholder HMAC secret storage with KMS envelope encryption.

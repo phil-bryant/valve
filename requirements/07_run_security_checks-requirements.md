@@ -91,6 +91,21 @@ Tests:
 - R055-T02: Run with `RUN_SCHEMATHESIS=true` and an unreadable/missing schema path and verify fail-fast output contains schema-path diagnostics.
 - R055-T03: Run with `SCHEMATHESIS_SCHEMA_PATH` override to an alternate readable file and verify Schemathesis execution uses the override path.
 
+R065  Statement: Canonical OpenAPI must document all credential HTTP routes used by Schemathesis DAST.
+Design: `openapi/valve.v1.yaml` includes register, revoke, rotate, list, verification, healthz, and upload-target paths with shared schemas and register-to-revoke/rotate links.
+Tests:
+- R065-T01: Verify `openapi/valve.v1.yaml` defines `/v1/valve/credentials/register` and `/v1/valve/credentials/{credential_id}/verification` paths.
+
+R070  Statement: Schemathesis DAST defaults must exercise negative and positive cases with stronger example budget.
+Design: Default `SCHEMATHESIS_MODE=all`, `SCHEMATHESIS_MAX_EXAMPLES=200`, and `SCHEMATHESIS_CHECKS` to core response checks (excluding `positive_data_acceptance` until OpenAPI can express Ed25519 key byte-length constraints); auto-remove ZAP alert `10106` from ignored refs when `DAST_BASE_URL` uses https; auto-boot sets `VALVE_DEV_AUTH_ALLOW_ALL=true` for DAST credential flows.
+Tests:
+- R070-T01: Verify `07_run_security_checks.sh` defaults `SCHEMATHESIS_MODE` to `all`, `SCHEMATHESIS_MAX_EXAMPLES` to `200`, and enables dev auth on auto-boot.
+
+R075  Statement: DAST auto-boot runs must clean tenant-prefixed rows after completion.
+Design: Assign `DAST_RUN_ID` during auto-boot and delete matching `valve_audit_log` and `valve_credentials` rows via `psql` after DAST when `DAST_DATABASE_URL` is available.
+Tests:
+- R075-T01: Verify auto-boot path emits a `DAST run id` line used for tenant cleanup prefixing.
+
 R060  Statement: Emit a clear DAST startup marker immediately after SAST completion.
 Design: When `RUN_DAST=true`, print an explicit DAST lane-start line before DAST preflight checks so operators can distinguish active progression from a perceived hang after the SAST completion marker.
 Tests:
