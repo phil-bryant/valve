@@ -6,10 +6,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}"
 
+#R010: Default fuzz packages and per-target runtime.
 FUZZ_TIME="${GO_FUZZ_TIME:-30s}"
 FUZZ_PACKAGES="${GO_FUZZ_PACKAGES:-./internal/credentials ./internal/security}"
 FUZZ_VERBOSE="${GO_FUZZ_VERBOSE:-true}"
 
+#R005: Fail fast when go is unavailable.
 if ! command -v go >/dev/null; then
   echo "go is required but was not found on PATH."
   exit 1
@@ -18,6 +20,7 @@ fi
 echo "▶ Running Go fuzz tests (${FUZZ_TIME} per fuzz target)"
 total_targets=0
 failed_targets=0
+#R020: new interesting counts are informational; only fuzz target failures fail the lane.
 for pkg in ${FUZZ_PACKAGES}; do
   fuzz_found=false
   while IFS= read -r fuzz_test; do
@@ -55,4 +58,5 @@ if [ "${failed_targets}" -gt 0 ]; then
   echo "❌ FAIL: ${failed_targets}/${total_targets} fuzz targets failed."
   exit 1
 fi
-echo "✅ PASS: ${total_targets} fuzz targets passed."
+#R015: Emit concise success output on completion.
+echo "✅ PASS: Go fuzz tests completed."

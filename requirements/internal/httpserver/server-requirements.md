@@ -32,6 +32,11 @@ Tests:
 - R015-T02: Verify that `GET /readyz` response includes `X-Frame-Options: DENY`.
 - R015-T03: Verify that `POST /v1/piston/upload-target` response includes `Referrer-Policy: no-referrer`.
 
+R020  Statement: Unsupported HTTP methods must return RFC 9110-compliant 405 responses with an Allow header.
+Design: `router.MethodNotAllowed(methodNotAllowedHandler)` sets `Allow: GET, HEAD, OPTIONS, POST`, `Content-Type: application/json`, HTTP 405, and body `{"error":"method not allowed"}`.
+Tests:
+- R020-T01: Verify that an unsupported HTTP method (e.g. QUERY on `/healthz`) returns HTTP 405 with a non-empty `Allow` header.
+
 ## Changelog
 
 - 2026-05-16: Numbered test bullets with R###-T## scheme.

@@ -46,6 +46,12 @@ Tests:
 - R015-T04: Verify that a fully valid upload target request returns nil.
 - R015-T05: Verify that successful upload-target lookup validation supports downstream audit recording behavior.
 
+R030  Statement: List query validation must reject empty, oversized, or invalid UTF-8 tenant/install identifiers.
+Design: `ValidateListQuery` returns an error when `tenant_id` or `install_id` is empty, exceeds 256 characters, contains NUL, or is invalid UTF-8.
+Tests:
+- R030-T01: Verify empty `tenant_id` returns an error.
+- R030-T02: Verify invalid UTF-8 `tenant_id` returns an error.
+
 ## Changelog
 
 - 2026-05-16: Numbered test bullets with R###-T## scheme.

@@ -5,6 +5,7 @@ load "helpers/common.bash"
 setup_fixture() {
   create_repo_fixture
   copy_script_to_fixture "12_run_fuzz.sh"
+  cp "$(repo_root)/README.md" "${FIXTURE_ROOT}/README.md"
 }
 
 setup() {
@@ -74,6 +75,45 @@ EOF
   #R015-T01: Run successful fuzz stub path and verify pass output line.
   #R015
   make_go_fuzz_stub
+  run env PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+    bash "${FIXTURE_ROOT}/12_run_fuzz.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"PASS: Go fuzz tests completed"* ]]
+}
+
+@test "readme documents new interesting as non-failing metadata" {
+  #R020-T01: Review README fuzz guidance and verify it states new interesting is non-failing metadata.
+  #R020
+  run grep -F "new interesting" "${FIXTURE_ROOT}/README.md"
+  [ "$status" -eq 0 ]
+  run grep -F "new interesting: 0" "${FIXTURE_ROOT}/README.md"
+  [ "$status" -eq 0 ]
+  run grep -F "not the \`new interesting\` count" "${FIXTURE_ROOT}/README.md"
+  [ "$status" -eq 0 ]
+}
+
+@test "succeeds when fuzz reports zero new interesting inputs" {
+  #R020-T02: Run fuzz targets with no failures and new interesting 0; verify script exits successfully.
+  #R020
+  cat > "${STUB_BIN}/go" <<EOF
+#!/usr/bin/env bash
+echo "go \$*" >> "${CALLS_LOG}"
+if [[ "\$1" == "test" ]] && [[ "\$*" == *"-fuzz=Fuzz"* ]] && [[ "\$*" == *"-fuzztime=30s"* ]]; then
+  echo "fuzzing with inputs in corpus"
+  echo "new interesting: 0"
+  exit 0
+fi
+if [[ "\$1" == "test" ]] && [[ "\$*" == *"-list=Fuzz"* ]] && [[ "\$*" == *"./internal/credentials"* ]]; then
+  printf '%s\n' FuzzValidateRegister
+  exit 0
+fi
+if [[ "\$1" == "test" ]] && [[ "\$*" == *"-list=Fuzz"* ]] && [[ "\$*" == *"./internal/security"* ]]; then
+  printf '%s\n' FuzzIsServiceAuthorized
+  exit 0
+fi
+exit 1
+EOF
+  chmod +x "${STUB_BIN}/go"
   run env PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
     bash "${FIXTURE_ROOT}/12_run_fuzz.sh"
   [ "$status" -eq 0 ]

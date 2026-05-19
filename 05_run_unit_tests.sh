@@ -75,7 +75,26 @@ if [ ! -f "$SQL_TEST_FILE" ]; then
   exit 1
 fi
 
+print_runner_header() {
+  local runner_name="$1"
+  local explainer_line_1="$2"
+  local explainer_line_2="$3"
+  local runner_url="$4"
+  local border="+==============================================================================+"
+  printf '%s\n' "$border"
+  printf '| %-76s |\n' "Test Runner: ${runner_name}"
+  printf '| %-76s |\n' "${explainer_line_1}"
+  printf '| %-76s |\n' "${explainer_line_2}"
+  printf '| %-76s |\n' "URL: ${runner_url}"
+  printf '%s\n' "$border"
+}
+
 #R025: Ensure pgTAP extension exists in target database.
+print_runner_header \
+  "pgTAP" \
+  "SQL unit testing framework for PostgreSQL stored logic." \
+  "Runs ingest_schema_pgtap.sql against the local valve database." \
+  "https://pgtap.org/"
 echo ""
 echo "▶ Running SQL unit tests (pgTAP)..."
 PGPASSWORD="$DB_PASSWORD" \
@@ -86,6 +105,11 @@ PGPASSWORD="$DB_PASSWORD" \
   psql "${PSQL_COMMON_ARGS[@]}" -f "$SQL_TEST_FILE"
 
 #R030: Run Go unit tests only after SQL unit tests pass.
+print_runner_header \
+  "go test" \
+  "Go native unit test runner across all repository packages." \
+  "Executes _test.go files with fail-fast semantics on first failure." \
+  "https://pkg.go.dev/cmd/go#hdr-Test_packages"
 echo ""
 echo "▶ Running Go unit tests..."
 GO_COVERAGE_THRESHOLD="${GO_COVERAGE_THRESHOLD:-70}"
@@ -98,6 +122,11 @@ if ! go test ./... | tee "$GO_TEST_OUTPUT_FILE"; then
 fi
 
 #R038: Enforce a minimum Go line coverage threshold across core unit-tested packages.
+print_runner_header \
+  "go tool cover" \
+  "Measures statement coverage for core internal packages." \
+  "Fails when total coverage falls below GO_COVERAGE_THRESHOLD." \
+  "https://pkg.go.dev/cmd/cover"
 echo ""
 echo "▶ Checking Go coverage threshold (${GO_COVERAGE_THRESHOLD}%)..."
 go test ${GO_COVERAGE_PACKAGES} -coverprofile="${COVERAGE_PROFILE}" >/dev/null
@@ -146,11 +175,21 @@ if payload["gate_failed"]:
 PY
 
 #R030: Run Bats shell tests only after Go unit tests pass.
+print_runner_header \
+  "Bats" \
+  "Shell script test framework for repository automation scripts." \
+  "Runs tests/sh Bats specs to verify script behavior and contracts." \
+  "https://bats-core.readthedocs.io/"
 echo ""
 echo "▶ Running Bats shell tests..."
 bats "${SCRIPT_DIR}/tests/sh"
 
 #R037: Run Swift package tests after Bats shell tests pass.
+print_runner_header \
+  "Swift Package Manager" \
+  "Runs XCTest targets in the macOS ValveProvisioningApp package." \
+  "Validates Swift feature code after shell and Go stages pass." \
+  "https://docs.swift.org/package-manager/"
 echo ""
 echo "▶ Running Swift package tests..."
 SWIFT_PACKAGE_DIR="${SCRIPT_DIR}/macos/ValveProvisioningApp"

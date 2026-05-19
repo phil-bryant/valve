@@ -241,6 +241,7 @@ setup() {
 
 @test "outputs header lines before each test section" {
   #R030-T05: Verify output includes header lines before each test section.
+  #R030-T06: Verify successful run output includes Test Runner labels and border.
   #R037-T01: Verify Swift test invocation uses swift test --package-path.
   #R030 #R037
   make_psql_stub 0
@@ -257,6 +258,12 @@ EOF
   printf '// swift-tools-version: 5.9\n' > "${FIXTURE_ROOT}/macos/ValveProvisioningApp/Package.swift"
   run bash "${FIXTURE_ROOT}/05_run_unit_tests.sh"
   [ "$status" -eq 0 ]
+  [[ "$output" == *"+==============================================================================+"* ]]
+  [[ "$output" == *"Test Runner: pgTAP"* ]]
+  [[ "$output" == *"Test Runner: go test"* ]]
+  [[ "$output" == *"Test Runner: go tool cover"* ]]
+  [[ "$output" == *"Test Runner: Bats"* ]]
+  [[ "$output" == *"Test Runner: Swift Package Manager"* ]]
   [[ "$output" == *"▶ Running SQL unit tests"* ]]
   [[ "$output" == *"▶ Running Go unit tests"* ]]
   [[ "$output" == *"▶ Checking Go coverage threshold"* ]]

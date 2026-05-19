@@ -9,8 +9,15 @@ import (
 // #R001-T05
 // #R001-T06
 // #R001-T07
+// #R001-T08
 // #R001-T09
+// #R001-T10
 // #R001-T11
+
+// Supplemental numbered tags for list query validation parity.
+// #R030-T01
+// #R030-T02
+// #R030
 
 func TestValidateRegisterScenarios(t *testing.T) {
 	validKey := base64.StdEncoding.EncodeToString(make([]byte, 32))

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+#R001: Run QED LLM eval workflows in strict fail-fast mode from repository root.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,22 +11,26 @@ QED_ENTRYPOINT="${QED_REPO_PATH}/cmd/qed"
 DEFAULT_MODE="run"
 MODE="${1:-${DEFAULT_MODE}}"
 
+#R005: Fail fast when go is unavailable.
 if ! command -v go >/dev/null; then
   echo "go is required but was not found on PATH."
   exit 1
 fi
 
+#R005: Fail fast when 1psa is unavailable.
 if ! command -v 1psa >/dev/null; then
   echo "1psa is required but was not found on PATH."
   exit 1
 fi
 
+#R010: Fail fast when the local QED repository entrypoint is unavailable.
 if [ ! -d "${QED_ENTRYPOINT}" ]; then
   echo "QED entrypoint not found at ${QED_ENTRYPOINT}."
   echo "Set QED_REPO_PATH to your local qed repository path."
   exit 1
 fi
 
+#R015: Validate mode argument and print usage for unsupported values.
 if [ "${MODE}" != "run" ] && [ "${MODE}" != "save-baseline" ] && [ "${MODE}" != "compare" ] && [ "${MODE}" != "all" ] && [ "${MODE}" != "repo-quality-only" ] && [ "${MODE}" != "live-only" ]; then
   echo "Usage: ./11_run_llm_evals.sh [run|save-baseline|compare|all|repo-quality-only|live-only]"
   exit 1
@@ -36,6 +41,7 @@ read_1psa_secret() {
   1psa -p "${item}"
 }
 
+#R020: Read OpenAI and Anthropic API keys from 1psa before invoking QED.
 OPENAI_API_KEY="$(read_1psa_secret "openai_api_key")"
 if [ -z "${OPENAI_API_KEY}" ]; then
   echo "Failed to read OPENAI_API_KEY from 1psa item: openai_api_key"
@@ -82,6 +88,7 @@ compare_suite() {
   run_qed eval compare --current "${VALVE_ROOT}/${report_path}" --baseline "${VALVE_ROOT}/${baseline_path}" --ci
 }
 
+#R025: Default recorded eval execution across all bundled suites.
 run_all_suites() {
   run_suite ".qed/evals/api_recorded.yaml" ".qed/evals/results/api-recorded-report.json" ".qed/baselines/api-recorded-baseline.json"
   run_suite ".qed/evals/scripts_recorded.yaml" ".qed/evals/results/scripts-recorded-report.json" ".qed/baselines/scripts-recorded-baseline.json"
@@ -89,6 +96,7 @@ run_all_suites() {
   run_suite ".qed/evals/combined_recorded.yaml" ".qed/evals/results/combined-recorded-report.json" ".qed/baselines/combined-recorded-baseline.json"
 }
 
+#R030: Support baseline, compare, and selective suite modes.
 save_all_baselines() {
   save_suite_baseline ".qed/evals/api_recorded.yaml" ".qed/evals/results/api-recorded-report.json" ".qed/baselines/api-recorded-baseline.json"
   save_suite_baseline ".qed/evals/scripts_recorded.yaml" ".qed/evals/results/scripts-recorded-report.json" ".qed/baselines/scripts-recorded-baseline.json"
@@ -125,6 +133,7 @@ if [ "${MODE}" = "repo-quality-only" ]; then
   run_suite ".qed/evals/repo_quality_recorded.yaml" ".qed/evals/results/repo-quality-recorded-report.json" ".qed/baselines/repo-quality-recorded-baseline.json"
 fi
 
+#R035: Support optional live eval mode with graceful skip and health preflight.
 if [ "${MODE}" = "live-only" ]; then
   if [ -z "${VALVE_DATABASE_URL:-}" ] && [ -z "${VALVE_TEST_DATABASE_URL:-}" ]; then
     echo "ℹ️  Live QED eval skipped: set VALVE_DATABASE_URL or VALVE_TEST_DATABASE_URL."

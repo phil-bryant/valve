@@ -96,7 +96,7 @@ func ValidateRotate(req RotateRequest, allowEmptyActor bool, hmacEnabled bool) e
 	return nil
 }
 
-// #R020: Reject list query parameters that are empty, oversized, or not valid UTF-8.
+// #R030: Reject list query parameters that are empty, oversized, or not valid UTF-8.
 func ValidateListQuery(tenantID string, installID string) error {
 	if tenantID == "" || installID == "" {
 		return fmt.Errorf("%w: tenant_id and install_id are required", ErrInvalidInput)

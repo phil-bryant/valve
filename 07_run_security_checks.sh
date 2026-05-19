@@ -28,9 +28,11 @@ DAST_ZAP_TIMEOUT_SECONDS="${DAST_ZAP_TIMEOUT_SECONDS:-180}"
 DAST_AUTO_BOOT="${DAST_AUTO_BOOT:-true}"
 DAST_AUTO_BOOT_TIMEOUT_SECONDS="${DAST_AUTO_BOOT_TIMEOUT_SECONDS:-30}"
 RUN_SCHEMATHESIS="${RUN_SCHEMATHESIS:-true}"
+#R065: Default Schemathesis schema is canonical OpenAPI with credential routes.
 SCHEMATHESIS_SCHEMA_PATH="${SCHEMATHESIS_SCHEMA_PATH:-${SCRIPT_DIR}/openapi/valve.v1.yaml}"
 SCHEMATHESIS_TIMEOUT_SECONDS="${SCHEMATHESIS_TIMEOUT_SECONDS:-180}"
 SCHEMATHESIS_SEED="${SCHEMATHESIS_SEED:-424242}"
+#R070: Default Schemathesis mode, example budget, and core response checks for DAST.
 SCHEMATHESIS_MODE="${SCHEMATHESIS_MODE:-all}"
 SCHEMATHESIS_MAX_EXAMPLES="${SCHEMATHESIS_MAX_EXAMPLES:-200}"
 SCHEMATHESIS_CHECKS="${SCHEMATHESIS_CHECKS:-not_a_server_error,status_code_conformance,content_type_conformance,response_headers_conformance,response_schema_conformance,negative_data_rejection,missing_required_header,unsupported_method}"
@@ -70,6 +72,7 @@ cleanup_dast_app() {
 
 trap cleanup_dast_app EXIT
 
+#R070: Auto-remove ZAP alert 10106 from ignored refs when DAST uses https.
 resolve_dast_ignored_alert_refs() {
   local base_url="$1"
   local refs="${DAST_IGNORED_ALERT_REFS}"
@@ -85,6 +88,7 @@ PY
   printf '%s' "${refs}"
 }
 
+#R075: Delete tenant-prefixed audit/credential rows after DAST auto-boot runs.
 cleanup_dast_tenant_data() {
   local database_url="$1"
   local tenant_prefix="$2"
@@ -852,6 +856,7 @@ run_dast_lane() {
       exit 1
     fi
     DAST_DATABASE_URL="${database_url}"
+    #R075: Assign tenant cleanup prefix for auto-boot DAST runs.
     if [[ -z "${DAST_RUN_ID}" ]]; then
       DAST_RUN_ID="${DAST_CLEANUP_TENANT_PREFIX}$(python3 -c 'import uuid; print(uuid.uuid4().hex[:12])')"
     fi
@@ -892,6 +897,7 @@ run_dast_lane() {
       exit 1
     fi
     echo "▶ Auto-booting valve service for DAST at ${effective_dast_base_url}"
+    #R070: Enable dev auth on auto-boot so DAST credential flows can register/revoke.
     #R030: Run the auto-boot child inside its own session via os.setsid() so
     # `cleanup_dast_app` can SIGTERM the whole tree (`go run` + spawned binary)
     # using the negative-PID syntax. Without this, killing `go run` would

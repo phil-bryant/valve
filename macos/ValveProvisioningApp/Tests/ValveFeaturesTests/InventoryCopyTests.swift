@@ -6,10 +6,6 @@ import ValveFeatures
 import ValveNetworking
 import ValveSecurity
 
-// Supplemental numbered tags for root view workflow parity.
-// #R001-T02
-// #R001-T03
-
 private struct StubAPIClient: ValveAPIClientProtocol
 { private enum StubError: Error
   { case unused

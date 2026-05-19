@@ -655,6 +655,21 @@ EOF
   [[ "$output" == *"✅ Static Application Security Testing (SAST) checks completed."*"▶ Starting Dynamic Application Security Testing (DAST) lane..."* ]]
 }
 
+@test "auto-boot emits dast run id for tenant cleanup" {
+  #R075-T01: Verify auto-boot path emits a DAST run id line used for tenant cleanup prefixing.
+  #R075
+  make_go_stub
+  make_1psa_stub
+  make_curl_stub 0
+  make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
+  local boot_port
+  boot_port="$(allocate_free_port)"
+  run env RUN_SAST=false DAST_AUTO_BOOT=true RUN_SCHEMATHESIS=false ONEPSA_DAST_PORT_VALUE="${boot_port}" GO_STUB_LOG_PATH="${TEST_TMPDIR}/go-stub.log" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+    bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"DAST run id (tenant cleanup prefix):"* ]]
+}
+
 @test "auto-boots service for DAST when enabled" {
   #R025-T04: Run with auto-boot enabled and dast_port populated verifies VALVE_ADDR uses that port.
   #R025

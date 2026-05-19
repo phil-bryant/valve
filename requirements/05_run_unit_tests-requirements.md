@@ -40,14 +40,15 @@ Design: Execute `CREATE EXTENSION IF NOT EXISTS pgtap;` via local `psql` using c
 Tests:
 - R025-T01: Verify script invokes extension-create SQL before test-file execution.
 
-R030  Statement: Execute SQL unit tests before Go, Bats, and Swift unit tests using non-interactive fail-fast commands, with a header line before each section.
-Design: Print `▶ Running SQL unit tests (pgTAP)...` then run SQL test file with `-w -P pager=off -h localhost -p 5432 -d valve -v ON_ERROR_STOP=1 -v VALVE_SCHEMA=<1psa schema> -f <sql-test-file>` using credentials and schema from `R005`; print `▶ Running Go unit tests...` then run `go test ./...`; print `▶ Running Bats shell tests...` then run `bats tests/sh`; print `▶ Running Swift package tests...` then run `swift test --package-path <swift-package-dir>`. Each stage only runs after the previous succeeds.
+R030  Statement: Execute SQL unit tests before Go, Bats, and Swift unit tests using non-interactive fail-fast commands, with a boxed header and progress line before each section.
+Design: Before each stage, print a boxed `print_runner_header` (same border/width format as step-07 `print_tool_header`, labeled `Test Runner:`) with runner name, two explainer lines, and documentation URL; then print the existing `▶ Running ...` or `▶ Checking ...` progress line; then run the stage command. Stages in order: pgTAP SQL tests via `psql` with `-w -P pager=off -h localhost -p 5432 -d valve -v ON_ERROR_STOP=1 -v VALVE_SCHEMA=<1psa schema> -f <sql-test-file>` using credentials and schema from `R005`; `go test ./...`; Go coverage gate for `GO_COVERAGE_PACKAGES` against `GO_COVERAGE_THRESHOLD`; `bats tests/sh`; `swift test --package-path <swift-package-dir>`. Each stage only runs after the previous succeeds.
 Tests:
 - R030-T01: Verify test invocation includes `ON_ERROR_STOP=1`, `-P pager=off`, VALVE_SCHEMA, and SQL test file path.
 - R030-T02: Force SQL stage failure and verify `go test` is not attempted.
 - R030-T03: Force `go test` failure and verify script exits non-zero.
 - R030-T04: Verify `bats tests/sh` runs only after `go test ./...` succeeds.
 - R030-T05: Verify output includes header lines before each test section.
+- R030-T06: Verify successful run output includes `Test Runner:` labels for all five runners and the `+====...====+` border.
 
 R032  Statement: Fail when any Go package has no associated `_test.go` files.
 Design: After `go test ./...` succeeds, parse output for `[no test files]` package rows and fail with an explicit list when any are present.
