@@ -259,7 +259,13 @@ Verification rules for Manifold:
 
 ## Security Checks (Operator Runbook)
 
-Recommended local gate order:
+Run all nine CI gate scripts in parallel (completion-order PASS/FAIL lines on the terminal; full output per script in `.parallel-checks-reports/<script-stem>.log`):
+
+```bash
+./13_run_all_checks_parallel.sh
+```
+
+Recommended local gate order (sequential):
 
 ```bash
 ./05_run_unit_tests.sh
