@@ -268,10 +268,9 @@ EOF
 
 make_go_stub() {
   # Optional first arg overrides the sleep duration the stub stays alive for.
-  # The default of 2s is short enough to keep most tests fast, but tests that
-  # also exercise the readiness/probe loop with retries should pass a longer
-  # value (or use a dedicated long-lived stub) to avoid racing the script's
-  # post-readiness "is the auto-boot still alive" recheck.
+  # The default of 2s keeps failure-path tests fast. Success-path auto-boot
+  # tests should call make_go_stub_until_cleanup instead so the stub survives
+  # the script's post-readiness recheck without a fixed 30s wall-clock wait.
   local sleep_for="${1:-2}"
   cat > "${STUB_BIN}/go" <<EOF
 #!/usr/bin/env bash
@@ -281,6 +280,24 @@ printf '%s\n' "VALVE_DATABASE_URL=\${VALVE_DATABASE_URL:-}" >> "\${GO_STUB_LOG_P
 printf '%s\n' "VALVE_UPLOAD_ENDPOINT=\${VALVE_UPLOAD_ENDPOINT:-}" >> "\${GO_STUB_LOG_PATH}"
 printf '%s\n' "VALVE_SERVICE_AUTH_KEY=\${VALVE_SERVICE_AUTH_KEY:-}" >> "\${GO_STUB_LOG_PATH}"
 sleep ${sleep_for}
+EOF
+  chmod +x "${STUB_BIN}/go"
+}
+
+make_go_stub_until_cleanup() {
+  # Mimics a long-running auto-boot listener without sleeping 30s on every test.
+  # The script's process-group teardown sends SIGTERM when DAST finishes; until
+  # then the stub blocks in interruptible sleep so parallel runs do not race
+  # the post-readiness kill -0 check.
+  cat > "${STUB_BIN}/go" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" > "${GO_STUB_LOG_PATH}"
+printf '%s\n' "VALVE_ADDR=${VALVE_ADDR:-}" >> "${GO_STUB_LOG_PATH}"
+printf '%s\n' "VALVE_DATABASE_URL=${VALVE_DATABASE_URL:-}" >> "${GO_STUB_LOG_PATH}"
+printf '%s\n' "VALVE_UPLOAD_ENDPOINT=${VALVE_UPLOAD_ENDPOINT:-}" >> "${GO_STUB_LOG_PATH}"
+printf '%s\n' "VALVE_SERVICE_AUTH_KEY=${VALVE_SERVICE_AUTH_KEY:-}" >> "${GO_STUB_LOG_PATH}"
+trap 'exit 0' TERM
+while true; do sleep 1; done
 EOF
   chmod +x "${STUB_BIN}/go"
 }

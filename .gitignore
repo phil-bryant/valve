@@ -5,6 +5,7 @@ bin/*
 .gocache/
 .gomodcache/
 .security-reports/
+.parallel-checks-reports/
 backups
 .build/
 **/.build/

@@ -31,7 +31,7 @@ teardown() {
 @test "auto-boot mints ephemeral service auth key and forwards it to Schemathesis" {
   #R040-T06: Run DAST lane with auto-boot enabled verifies auto-booted valve service receives same VALVE_SERVICE_AUTH_KEY forwarded to Schemathesis.
   #R040
-  make_go_stub
+  make_go_stub_until_cleanup
   make_1psa_stub
   make_curl_stub 0
   make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
@@ -58,7 +58,7 @@ teardown() {
 @test "auto-boot reuses operator-provided VALVE_SERVICE_AUTH_KEY verbatim" {
   #R040-T07: Run DAST lane with operator-provided VALVE_SERVICE_AUTH_KEY verifies script reuses that value verbatim.
   #R040
-  make_go_stub
+  make_go_stub_until_cleanup
   make_1psa_stub
   make_curl_stub 0
   make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0

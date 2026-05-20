@@ -57,7 +57,7 @@ teardown() {
 @test "auto-boot emits dast run id for tenant cleanup" {
   #R075-T01: Verify auto-boot path emits a DAST run id line used for tenant cleanup prefixing.
   #R075
-  make_go_stub
+  make_go_stub_until_cleanup
   make_1psa_stub
   make_curl_stub 0
   make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
@@ -72,7 +72,7 @@ teardown() {
 @test "auto-boots service for DAST when enabled" {
   #R025-T04: Run with auto-boot enabled and dast_port populated verifies VALVE_ADDR uses that port.
   #R025
-  make_go_stub
+  make_go_stub_until_cleanup
   make_1psa_stub
   make_curl_stub 0
   make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
@@ -105,7 +105,7 @@ teardown() {
 
 @test "uses 1psa DAST port field for auto-boot bind address when provided" {
   #R025
-  make_go_stub
+  make_go_stub_until_cleanup
   make_1psa_stub
   make_curl_stub 0
   make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
@@ -120,7 +120,7 @@ teardown() {
 
 @test "builds DAST base URL from endpoint protocol host and port fields" {
   #R025
-  make_go_stub
+  make_go_stub_until_cleanup
   make_1psa_stub
   make_curl_stub 0
   make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
@@ -135,7 +135,7 @@ teardown() {
 
 @test "defaults database username to valve when 1psa username is absent" {
   #R025
-  make_go_stub
+  make_go_stub_until_cleanup
   make_1psa_stub
   make_curl_stub 0
   make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
@@ -150,7 +150,7 @@ teardown() {
 
 @test "uses explicit DAST_BASE_URL override for auto-boot bind address" {
   #R025
-  make_go_stub
+  make_go_stub_until_cleanup
   make_1psa_stub
   make_curl_stub 0
   make_zap_baseline_stub '{"site":[{"alerts":[]}]}' 0
@@ -260,7 +260,7 @@ time.sleep(30)
   #R030
   # Use a 30s-lived auto-boot stub so the post-readiness "still alive" recheck
   # cannot race the stub's exit while we are also exercising probe retries.
-  make_go_stub 30
+  make_go_stub_until_cleanup
   make_1psa_stub
   # Fail the first probe (mimicking the "service still warming up" interval)
   # and succeed on the second.
