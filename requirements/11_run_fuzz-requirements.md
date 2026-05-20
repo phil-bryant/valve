@@ -2,7 +2,7 @@
 
 ## Scope
 
-Applies to `12_run_fuzz.sh`.
+Applies to `11_run_fuzz.sh`.
 
 R001  Statement: Run fuzz tests in strict fail-fast mode from repository root.
 Design: Use `set -euo pipefail`, `cd` to script directory, and execute `go test` with `-fuzz=.` and configurable `-fuzztime`.
@@ -32,5 +32,6 @@ Tests:
 
 ## Changelog
 
+- 2026-05-20: Renumbered from `12_run_fuzz.sh` to `11_run_fuzz.sh`.
 - 2026-05-19: Documented interpretation of `new interesting` and non-failing zero values.
 - 2026-05-18: Added fuzz runner requirements for validation and service-auth packages.

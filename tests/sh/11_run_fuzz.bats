@@ -3,13 +3,13 @@
 load "helpers/common.bash"
 
 setup_file() {
-  setup_file_shared_fixture "12_run_fuzz.sh"
+  setup_file_shared_fixture "11_run_fuzz.sh"
   cp "$(repo_root)/README.md" "${BATS_FILE_TMPDIR}/README.md"
 }
 
 setup_fixture() {
   create_repo_fixture
-  copy_script_to_fixture "12_run_fuzz.sh"
+  copy_script_to_fixture "11_run_fuzz.sh"
   cp "${BATS_FILE_TMPDIR}/README.md" "${FIXTURE_ROOT}/README.md"
 }
 
@@ -48,7 +48,7 @@ EOF
   make_go_fuzz_stub
   mkdir -p "${TEST_TMPDIR}/elsewhere"
   run env PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash -c "cd '${TEST_TMPDIR}/elsewhere' && bash '${FIXTURE_ROOT}/12_run_fuzz.sh'"
+    bash -c "cd '${TEST_TMPDIR}/elsewhere' && bash '${FIXTURE_ROOT}/11_run_fuzz.sh'"
   [ "$status" -eq 0 ]
 }
 
@@ -56,7 +56,7 @@ EOF
   #R005-T01: Run with go missing verifies non-zero failure.
   #R005
   run env PATH="/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/12_run_fuzz.sh"
+    bash "${FIXTURE_ROOT}/11_run_fuzz.sh"
   [ "$status" -ne 0 ]
   [[ "$output" == *"go is required"* ]]
 }
@@ -66,7 +66,7 @@ EOF
   #R010
   make_go_fuzz_stub
   run env PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/12_run_fuzz.sh"
+    bash "${FIXTURE_ROOT}/11_run_fuzz.sh"
   [ "$status" -eq 0 ]
   run grep -F "internal/credentials" "${CALLS_LOG}"
   [ "$status" -eq 0 ]
@@ -81,7 +81,7 @@ EOF
   #R015
   make_go_fuzz_stub
   run env PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/12_run_fuzz.sh"
+    bash "${FIXTURE_ROOT}/11_run_fuzz.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *"PASS: Go fuzz tests completed"* ]]
 }
@@ -120,7 +120,7 @@ exit 1
 EOF
   chmod +x "${STUB_BIN}/go"
   run env PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
-    bash "${FIXTURE_ROOT}/12_run_fuzz.sh"
+    bash "${FIXTURE_ROOT}/11_run_fuzz.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *"PASS: Go fuzz tests completed"* ]]
 }

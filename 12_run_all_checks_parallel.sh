@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 #R005: Execute from repository root regardless of caller directory.
 cd "$SCRIPT_DIR"
 
-#R010: Fixed checklist of nine numbered check scripts.
+#R010: Fixed checklist of eight numbered check scripts.
 CHECKS=(
   "00_verify_requirements_traceability.sh"
   "02_run_dependency_freshness_checks.sh"
@@ -16,8 +16,7 @@ CHECKS=(
   "06_run_mutation_tests.sh"
   "07_run_security_checks.sh"
   "08_run_av_checks.sh"
-  "11_run_llm_evals.sh"
-  "12_run_fuzz.sh"
+  "11_run_fuzz.sh"
 )
 
 #R040: Remain a standalone meta-runner; child check scripts must not invoke this script.
@@ -29,7 +28,7 @@ PROGRESS_INTERVAL_SECONDS="${PARALLEL_CHECKS_PROGRESS_INTERVAL_SECONDS:-1}"
 if [[ ! "$PROGRESS_INTERVAL_SECONDS" =~ ^[0-9]+$ || "$PROGRESS_INTERVAL_SECONDS" -le 0 ]]; then
   PROGRESS_INTERVAL_SECONDS=1
 fi
-LOCK_FILE="${SCRIPT_DIR}/.13_run_all_checks_parallel.lock"
+LOCK_FILE="${SCRIPT_DIR}/.12_run_all_checks_parallel.lock"
 PROGRESS_INLINE=false
 if [[ -t 1 ]]; then
   PROGRESS_INLINE=true
@@ -58,7 +57,7 @@ acquire_single_run_lock() {
     existing_lock_pid="$(<"$LOCK_FILE")"
   fi
   if [[ -n "$existing_lock_pid" ]] && kill -0 "$existing_lock_pid" 2>/dev/null; then
-    echo "❌ FAIL: another 13_run_all_checks_parallel.sh run is already active (pid ${existing_lock_pid})." >&2
+    echo "❌ FAIL: another 12_run_all_checks_parallel.sh run is already active (pid ${existing_lock_pid})." >&2
     return 1
   fi
   rm -f "$LOCK_FILE"
@@ -240,6 +239,12 @@ printf "%s|%s\n" "${CHECK_NAME}" "${exit_code}" >&3' &
 done
 
 if [[ "${PARALLEL_CHECKS_TEST_INTERRUPT:-}" == "1" ]]; then
+  if [[ -n "${PARALLEL_CHECKS_TEST_INTERRUPT_WAIT_FILE:-}" ]]; then
+    for _ in $(seq 1 100); do
+      [[ -f "${PARALLEL_CHECKS_TEST_INTERRUPT_WAIT_FILE}" ]] && break
+      sleep 0.05
+    done
+  fi
   stop_on_signal 130
 fi
 

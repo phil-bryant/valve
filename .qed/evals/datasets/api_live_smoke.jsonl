@@ -1,2 +1,0 @@
-{"id":"live-healthz-200","prompt":"When Valve is running locally, what HTTP status and JSON body does GET /healthz return?","expected":"Returns HTTP 200 with application/json containing ok:true."}
-{"id":"live-register-contract","prompt":"For POST /v1/valve/credentials/register, which fields are required in the OpenAPI contract for an ed25519 credential on macOS?","expected":"Requires tenant_id, install_id, app_bundle_id, platform macOS, credential_mode ed25519, and public_key when mode is ed25519."}

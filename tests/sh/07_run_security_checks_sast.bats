@@ -159,7 +159,7 @@ teardown() {
   make_detect_secrets_stub '{"results":{}}'
   make_gosec_stub '{"Issues":[]}'
   make_govulncheck_stub '{}'
-  run env RUN_DAST=false DETECT_SECRETS_EXPECT_ARGS_CONTAIN="--exclude-files (^|/)\\.gomodcache/|(^|/)requirements/.*-requirements\\.md$|(^|/)\\.cursor/plans/.*\\.plan\\.md$|(^|/)\\.qed/evals/results/.*\\.json$|(^|/)\\.security-reports/.*\\.(json|log)$" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
+  run env RUN_DAST=false DETECT_SECRETS_EXPECT_ARGS_CONTAIN="--exclude-files (^|/)\\.gomodcache/|(^|/)requirements/.*-requirements\\.md$|(^|/)\\.cursor/plans/.*\\.plan\\.md$|(^|/)\\.security-reports/.*\\.(json|log)$" PATH="${STUB_BIN}:/usr/bin:/bin:/usr/sbin:/sbin" \
     bash "${FIXTURE_ROOT}/07_run_security_checks.sh"
   [ "$status" -eq 0 ]
 }

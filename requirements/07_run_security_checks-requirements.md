@@ -25,7 +25,7 @@ Design: Require `semgrep`, `shellcheck`, `gitleaks`, `detect-secrets`, `gosec`, 
 Tests:
 - R015-T01: Run SAST lane with stubs and verify each expected scanner artifact file is generated.
 - R015-T02: Run SAST lane with `go vet` findings and verify `sast-summary.json` includes non-zero `govet_findings`.
-- R015-T03: Verify `detect-secrets` invocation includes the default `.gomodcache`, requirements-doc, `.cursor/plans/*.plan.md`, and `.qed/evals/results/*.json` exclusion regex.
+- R015-T03: Verify `detect-secrets` invocation includes the default `.gomodcache`, requirements-doc, and `.cursor/plans/*.plan.md` exclusion regex.
 
 R020  Statement: Aggregate SAST findings into a centralized gating summary.
 Design: Build `sast-summary.json` from scanner outputs, include high/critical totals, count `detect-secrets` findings after applying the exclusion regex policy, and fail when `SECURITY_FAIL_ON_HIGH_CRITICAL=true` and findings are non-zero.

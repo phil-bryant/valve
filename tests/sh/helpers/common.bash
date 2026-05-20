@@ -19,9 +19,9 @@ repo_root() {
 # FIXTURE_ROOT under TEST_TMPDIR (per `setup_shell_test`).
 #
 # Usage in a *.bats file:
-#   setup_file() { setup_file_shared_fixture "12_run_fuzz.sh"; }
+#   setup_file() { setup_file_shared_fixture "11_run_fuzz.sh"; }
 #   setup()      { setup_shell_test; setup_fixture; }
-# where `setup_fixture` calls `copy_script_to_fixture "12_run_fuzz.sh"`.
+# where `setup_fixture` calls `copy_script_to_fixture "11_run_fuzz.sh"`.
 setup_file_shared_fixture() {
   : "${BATS_FILE_TMPDIR:?BATS_FILE_TMPDIR is unset; bats >=1.7 required}"
   export SHARED_SOURCE_DIR="${BATS_FILE_TMPDIR}/shared-source"
