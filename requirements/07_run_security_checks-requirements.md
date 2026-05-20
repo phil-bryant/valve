@@ -45,7 +45,7 @@ Tests:
 - R025-T06: Run with auto-boot enabled and explicit `VALVE_DATABASE_URL` set while `1psa` is unavailable and verify fail-fast output.
 
 R030  Statement: Probe service health before launching DAST scanning and prevent auto-boot from leaking the bind address.
-Design: Require a successful `curl` probe to `${DAST_BASE_URL}/healthz`; when `DAST_AUTO_BOOT=true`, wait up to `DAST_AUTO_BOOT_TIMEOUT_SECONDS` for service readiness; launch the auto-boot child in its own session via `setsid` and tear down the entire process group on cleanup.
+Design: Require a successful `curl` probe to `${DAST_BASE_URL}/healthz`; when `DAST_AUTO_BOOT=true`, wait up to `DAST_AUTO_BOOT_TIMEOUT_SECONDS` for service readiness; sleep `DAST_HEALTH_PROBE_INTERVAL_SECONDS` (default 1) between probe attempts so the test suite can shorten the loop without affecting operator-facing default cadence; launch the auto-boot child in its own session via `setsid` and tear down the entire process group on cleanup.
 Tests:
 - R030-T01: Run DAST lane with failing `curl` stub and verify explicit non-zero failure output that includes the last health probe output.
 - R030-T02: Run DAST lane with passing `curl` and verify `dast-health.log` is created and no transient curl errors are printed to the terminal.

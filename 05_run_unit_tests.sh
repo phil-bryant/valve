@@ -181,8 +181,79 @@ print_runner_header \
   "Runs tests/sh Bats specs to verify script behavior and contracts." \
   "https://bats-core.readthedocs.io/"
 echo ""
-echo "▶ Running Bats shell tests..."
-bats "${SCRIPT_DIR}/tests/sh"
+
+#R040: Discover bats test files under tests/sh and run them in parallel by
+# file via `xargs -P`, buffering each file's stdout/stderr to a tempfile and
+# dumping it atomically with a "===== <basename> =====" banner once the file
+# finishes. TAP formatter + --print-output-on-failure + --timing preserve
+# every line bats emits today (per-test ok/not-ok, failure diagnostics, and
+# per-test ms). Default concurrency is `sysctl -n hw.ncpu`. When invoked
+# under an outer parallel meta-runner that exports PARALLEL_LANES>1, we
+# divide so total inner+outer concurrency stays near hw.ncpu. BATS_JOBS
+# overrides the default; BATS_FILTER and BATS_FILTER_STATUS forward to bats.
+BATS_DIR="${SCRIPT_DIR}/tests/sh"
+if [ ! -d "$BATS_DIR" ]; then
+  echo "❌ Bats test directory not found: $BATS_DIR"
+  exit 1
+fi
+
+bats_default_jobs="$(sysctl -n hw.ncpu 2>/dev/null || echo 8)"
+if [[ "${PARALLEL_LANES:-1}" =~ ^[0-9]+$ ]] && [ "${PARALLEL_LANES:-1}" -gt 1 ]; then
+  bats_default_jobs=$(( bats_default_jobs / PARALLEL_LANES ))
+  [ "$bats_default_jobs" -lt 1 ] && bats_default_jobs=1
+fi
+BATS_JOBS_RESOLVED="${BATS_JOBS:-$bats_default_jobs}"
+
+BATS_TMP_DIR="$(mktemp -d)"
+cleanup_bats_tmp() { rm -rf "$BATS_TMP_DIR"; }
+trap cleanup_bats_tmp EXIT
+
+bats_file_count=$(find "$BATS_DIR" -maxdepth 1 -name '*.bats' | wc -l | tr -d ' ')
+if [ "$bats_file_count" -eq 0 ]; then
+  echo "❌ No bats files found in $BATS_DIR"
+  exit 1
+fi
+
+#R040: Two parallel modes. Default is per-file xargs (no deps, file-atomic
+# output). When BATS_USE_NATIVE_JOBS=true and GNU `parallel` is on PATH,
+# delegate to `bats -j N` so within-file parallelism kicks in too. Both
+# modes pass --print-output-on-failure --timing so failure diagnostics and
+# per-test ms remain visible; both modes honor BATS_FILTER / BATS_FILTER_STATUS.
+bats_native_args=(--print-output-on-failure --timing)
+[ -n "${BATS_FILTER:-}" ] && bats_native_args+=(-f "${BATS_FILTER}")
+[ -n "${BATS_FILTER_STATUS:-}" ] && bats_native_args+=(--filter-status "${BATS_FILTER_STATUS}")
+
+if [ "${BATS_USE_NATIVE_JOBS:-false}" = "true" ] && command -v parallel >/dev/null 2>&1; then
+  echo "▶ Running Bats shell tests (bats -j ${BATS_JOBS_RESOLVED}, files=${bats_file_count}, GNU parallel)..."
+  bats -j "$BATS_JOBS_RESOLVED" --no-parallelize-within-files \
+    "${bats_native_args[@]}" "$BATS_DIR"
+else
+  if [ "${BATS_USE_NATIVE_JOBS:-false}" = "true" ]; then
+    echo "▶ BATS_USE_NATIVE_JOBS=true but GNU parallel not on PATH; falling back to xargs -P."
+  fi
+  echo "▶ Running Bats shell tests (parallel by file, jobs=${BATS_JOBS_RESOLVED}, files=${bats_file_count})..."
+  bats_status=0
+  find "$BATS_DIR" -maxdepth 1 -name '*.bats' -print0 \
+    | BATS_TMP_DIR="$BATS_TMP_DIR" BATS_FILTER="${BATS_FILTER:-}" \
+      BATS_FILTER_STATUS="${BATS_FILTER_STATUS:-}" \
+      xargs -0 -P "$BATS_JOBS_RESOLVED" -I {} bash -c '
+        f="$1"
+        base="$(basename "$f")"
+        out="${BATS_TMP_DIR}/${base}.tap"
+        args=(--tap --print-output-on-failure --timing)
+        [ -n "${BATS_FILTER}" ] && args+=(-f "${BATS_FILTER}")
+        [ -n "${BATS_FILTER_STATUS}" ] && args+=(--filter-status "${BATS_FILTER_STATUS}")
+        bats "${args[@]}" "$f" >"$out" 2>&1
+        rc=$?
+        printf "\n===== %s =====\n" "$base"
+        cat "$out"
+        exit $rc
+      ' _ {} \
+    || bats_status=$?
+  if [ "$bats_status" -ne 0 ]; then
+    exit "$bats_status"
+  fi
+fi
 
 #R037: Run Swift package tests after Bats shell tests pass.
 print_runner_header \

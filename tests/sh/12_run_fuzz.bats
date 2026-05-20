@@ -2,10 +2,15 @@
 
 load "helpers/common.bash"
 
+setup_file() {
+  setup_file_shared_fixture "12_run_fuzz.sh"
+  cp "$(repo_root)/README.md" "${BATS_FILE_TMPDIR}/README.md"
+}
+
 setup_fixture() {
   create_repo_fixture
   copy_script_to_fixture "12_run_fuzz.sh"
-  cp "$(repo_root)/README.md" "${FIXTURE_ROOT}/README.md"
+  cp "${BATS_FILE_TMPDIR}/README.md" "${FIXTURE_ROOT}/README.md"
 }
 
 setup() {

@@ -71,6 +71,10 @@ setup_eval_artifacts() {
   touch "${FIXTURE_ROOT}/.qed/baselines/api-live-smoke-baseline.json"
 }
 
+setup_file() {
+  setup_file_shared_fixture "11_run_llm_evals.sh"
+}
+
 setup_fixture() {
   create_repo_fixture
   copy_script_to_fixture "11_run_llm_evals.sh"

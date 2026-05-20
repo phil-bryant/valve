@@ -79,8 +79,15 @@ Tests:
 - R060-T03: Run with `gremlins` unavailable on PATH but installable to Go bin and verify resolver fallback succeeds.
 - R060-T04: Run with empty `GOBIN` and preinstalled `gremlins` in `GOPATH/bin` and verify fallback resolution succeeds without reinstall.
 
+R065  Statement: Ensure test-runtime parallelism helper (GNU `parallel`) is available so step-05's bats runner can opt into `bats -j N` native within-file parallelism.
+Design: Verify `parallel` on `PATH`; when missing, install Homebrew formula `parallel`. The dependency is optional in the sense that `05_run_unit_tests.sh` falls back to BSD `xargs -P` when `BATS_USE_NATIVE_JOBS=true` and `parallel` is not on PATH, but the installer still ensures it so the faster mode is always available locally.
+Tests:
+- R065-T01: Run installer without `parallel` and verify `brew install parallel` is attempted.
+- R065-T02: Run with `parallel` already available and verify no reinstall.
+
 ## Changelog
 
+- 2026-05-20: Added `R065` for GNU `parallel` prerequisite so step-05 can opt into `bats -j N` native parallelism.
 - 2026-05-16: Clarified R060 gremlins resolver style to require declaration-then-assignment (ShellCheck SC2155-safe) and added R060-T04 for preinstalled `GOPATH/bin` fallback.
 - 2026-05-16: Added R060 for mutation testing tooling (gremlins) prerequisite.
 - 2026-05-16: Numbered test bullets with R###-T## scheme.

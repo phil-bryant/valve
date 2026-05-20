@@ -24,6 +24,11 @@ ZAP_APP_PATH="${ZAP_APP_PATH:-/Applications/ZAP.app}"
 #             should remove 10106 from DAST_IGNORED_ALERT_REFS.
 DAST_IGNORED_ALERT_REFS="${DAST_IGNORED_ALERT_REFS:-10055-13,10062,10106}"
 DAST_HEALTH_PROBE_TIMEOUT_SECONDS="${DAST_HEALTH_PROBE_TIMEOUT_SECONDS:-5}"
+#R030: Interval between /healthz probe attempts. Defaults to 1s for human-facing
+# operator runs; bats tests that exercise probe retries override this to a small
+# fractional value (e.g. 0.05) to cut tens of seconds off the test suite without
+# changing default behavior in production.
+DAST_HEALTH_PROBE_INTERVAL_SECONDS="${DAST_HEALTH_PROBE_INTERVAL_SECONDS:-1}"
 DAST_ZAP_TIMEOUT_SECONDS="${DAST_ZAP_TIMEOUT_SECONDS:-180}"
 DAST_AUTO_BOOT="${DAST_AUTO_BOOT:-true}"
 DAST_AUTO_BOOT_TIMEOUT_SECONDS="${DAST_AUTO_BOOT_TIMEOUT_SECONDS:-30}"
@@ -329,7 +334,7 @@ wait_for_healthz() {
     if (( "$(date +%s)" - start_ts >= timeout_seconds )); then
       return 1
     fi
-    sleep 1
+    sleep "${DAST_HEALTH_PROBE_INTERVAL_SECONDS}"
   done
 }
 

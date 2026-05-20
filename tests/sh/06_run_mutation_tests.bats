@@ -131,6 +131,10 @@ EOF
   chmod +x "${STUB_BIN}/gremlins"
 }
 
+setup_file() {
+  setup_file_shared_fixture "06_run_mutation_tests.sh"
+}
+
 setup_fixture() {
   create_repo_fixture
   copy_script_to_fixture "06_run_mutation_tests.sh"

@@ -133,6 +133,21 @@ SELECT * FROM finish();
 EOF
   mkdir -p "${FIXTURE_ROOT}/macos/ValveProvisioningApp"
   printf '// swift-tools-version: 5.9\n' > "${FIXTURE_ROOT}/macos/ValveProvisioningApp/Package.swift"
+  # The parallel runner (R040) discovers files via `find tests/sh -name '*.bats'`,
+  # so the fixture needs at least one *.bats file for the bats stub to be invoked.
+  mkdir -p "${FIXTURE_ROOT}/tests/sh"
+  cat > "${FIXTURE_ROOT}/tests/sh/example.bats" <<'EOF'
+#!/usr/bin/env bats
+@test "fixture stub" {
+  [ 1 -eq 1 ]
+}
+EOF
+  cat > "${FIXTURE_ROOT}/tests/sh/extra.bats" <<'EOF'
+#!/usr/bin/env bats
+@test "fixture stub 2" {
+  [ 1 -eq 1 ]
+}
+EOF
 }
 
 teardown() {
@@ -385,4 +400,113 @@ EOF
   run bash "${FIXTURE_ROOT}/05_run_unit_tests.sh"
   [ "$status" -eq 0 ]
   [ "$(printf '%s' "$output" | grep -c "✅ PASS:")" -eq 1 ]
+}
+
+@test "invokes bats per file with TAP, failure-output, and timing flags" {
+  #R040-T01: Verify parallel bats invocation forwards --tap, --print-output-on-failure, and --timing per file.
+  #R040
+  run bash "${FIXTURE_ROOT}/05_run_unit_tests.sh"
+  [ "$status" -eq 0 ]
+  grep -F -- "--tap" "${CALLS_LOG}"
+  grep -F -- "--print-output-on-failure" "${CALLS_LOG}"
+  grep -F -- "--timing" "${CALLS_LOG}"
+  [ "$(grep -c "bats " "${CALLS_LOG}")" -ge 2 ]
+  grep -F "example.bats" "${CALLS_LOG}"
+  grep -F "extra.bats" "${CALLS_LOG}"
+}
+
+@test "fails when no bats files are found under tests/sh" {
+  #R040-T02: Empty tests/sh directory verifies the runner fails fast with a clear message.
+  #R040
+  rm -f "${FIXTURE_ROOT}/tests/sh/"*.bats
+  run bash "${FIXTURE_ROOT}/05_run_unit_tests.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"No bats files found"* ]]
+}
+
+@test "fails when tests/sh directory is missing" {
+  #R040-T03: Missing tests/sh directory verifies the runner fails fast with a clear message.
+  #R040
+  rm -rf "${FIXTURE_ROOT}/tests/sh"
+  run bash "${FIXTURE_ROOT}/05_run_unit_tests.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Bats test directory not found"* ]]
+}
+
+@test "honors BATS_JOBS env override in progress banner" {
+  #R040-T04: BATS_JOBS=1 verifies the resolved-jobs value flows through to the progress banner.
+  #R040
+  run env BATS_JOBS=1 bash "${FIXTURE_ROOT}/05_run_unit_tests.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"jobs=1"* ]]
+}
+
+@test "PARALLEL_LANES>1 reduces default bats jobs to keep concurrency near hw.ncpu" {
+  #R040-T05: PARALLEL_LANES=99 with BATS_JOBS unset clamps the default to 1 so an outer meta-runner does not oversubscribe.
+  #R040
+  run env PARALLEL_LANES=99 bash "${FIXTURE_ROOT}/05_run_unit_tests.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"jobs=1"* ]]
+}
+
+@test "BATS_FILTER env propagates -f to each bats invocation" {
+  #R040-T06: BATS_FILTER=foo verifies -f foo is forwarded to every bats call.
+  #R040
+  run env BATS_FILTER=foo bash "${FIXTURE_ROOT}/05_run_unit_tests.sh"
+  [ "$status" -eq 0 ]
+  grep -F -- "-f foo" "${CALLS_LOG}"
+}
+
+@test "BATS_FILTER_STATUS env propagates --filter-status to each bats invocation" {
+  #R040-T07: BATS_FILTER_STATUS=failed verifies --filter-status failed is forwarded to every bats call.
+  #R040
+  run env BATS_FILTER_STATUS=failed bash "${FIXTURE_ROOT}/05_run_unit_tests.sh"
+  [ "$status" -eq 0 ]
+  grep -F -- "--filter-status failed" "${CALLS_LOG}"
+}
+
+@test "wraps each bats file's output with a basename banner" {
+  #R040-T08: Verify the per-file output dump is prefixed by "===== <basename> =====".
+  #R040
+  run bash "${FIXTURE_ROOT}/05_run_unit_tests.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"===== example.bats ====="* ]]
+  [[ "$output" == *"===== extra.bats ====="* ]]
+}
+
+@test "non-zero exit from any bats file propagates" {
+  #R040-T09: A failing bats stub verifies the meta-runner exits non-zero.
+  #R040
+  make_bats_stub 1
+  run bash "${FIXTURE_ROOT}/05_run_unit_tests.sh"
+  [ "$status" -ne 0 ]
+}
+
+@test "BATS_USE_NATIVE_JOBS=true falls back to xargs when parallel is missing" {
+  #R040-T10: BATS_USE_NATIVE_JOBS=true with no parallel on PATH verifies a fallback notice is printed and the xargs path still runs.
+  #R040
+  run env BATS_USE_NATIVE_JOBS=true bash "${FIXTURE_ROOT}/05_run_unit_tests.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"falling back to xargs"* ]]
+  [[ "$output" == *"parallel by file"* ]]
+  grep -F "example.bats" "${CALLS_LOG}"
+}
+
+@test "BATS_USE_NATIVE_JOBS=true delegates to bats -j when parallel is available" {
+  #R040-T11: BATS_USE_NATIVE_JOBS=true with a stub parallel on PATH verifies bats is invoked once with -j (not once per file).
+  #R040
+  cat > "${STUB_BIN}/parallel" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+  chmod +x "${STUB_BIN}/parallel"
+  run env BATS_USE_NATIVE_JOBS=true bash "${FIXTURE_ROOT}/05_run_unit_tests.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"GNU parallel"* ]]
+  # Native-jobs mode invokes bats exactly once with `-j N` and the tests dir
+  # (no per-file iteration), so the stubbed bats command line records -j and
+  # the directory path rather than individual *.bats files.
+  grep -F -- "-j " "${CALLS_LOG}"
+  grep -F -- "--no-parallelize-within-files" "${CALLS_LOG}"
+  [ "$(grep -c "^bats " "${CALLS_LOG}")" -eq 1 ]
 }

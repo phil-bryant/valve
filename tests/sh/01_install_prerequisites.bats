@@ -92,14 +92,15 @@ EOF
   [[ "${output}" == *"install.sh"* ]]
 }
 
-@test "R010,R025,R030,R055,R060: installs Go, security, DAST, and mutation tooling when missing" {
+@test "R010,R025,R030,R055,R060,R065: installs Go, security, DAST, mutation, and test-runtime tooling when missing" {
   #R010-T01: Run without go verifies installer attempts brew install go.
   #R025-T01: Run without golangci-lint verifies installer attempts brew install golangci-lint.
   #R030-T01: Run without security tools verifies each required formula install is attempted.
   #R055-T01: Run without schemathesis verifies brew install schemathesis is attempted.
   #R055-T02: Run without zap-baseline.py/ZAP.sh verifies brew install --cask zap is attempted.
   #R060-T01: Run without gremlins verifies go install is attempted for gremlins.
-  #R010 #R025 #R030 #R055 #R060
+  #R065-T01: Run without parallel verifies brew install parallel is attempted.
+  #R010 #R025 #R030 #R055 #R060 #R065
   create_brew_stub
   create_1psa_stub
   cat > "${STUB_BIN}/go" <<'EOF'
@@ -147,6 +148,8 @@ EOF
   run rg "^install --cask zap$" "${TMP_ROOT}/brew.log"
   [ "$status" -eq 0 ]
   run rg "gremlins" "${TMP_ROOT}/go-install.log"
+  [ "$status" -eq 0 ]
+  run rg "^install parallel$" "${TMP_ROOT}/brew.log"
   [ "$status" -eq 0 ]
 }
 
@@ -365,6 +368,44 @@ EOF
   run env PATH="${STUB_BIN}:/usr/bin:/bin" BREW_LOG="${TMP_ROOT}/brew.log" STUB_BIN="${STUB_BIN}" ZAP_APP_PATH="${ZAP_APP_PATH}" /bin/bash "${SCRIPT_PATH}"
   [ "$status" -ne 0 ]
   [[ "${output}" == *"[1psa] Missing."* ]]
+}
+
+@test "R065: skips parallel install when already available" {
+  #R065-T02: Run with parallel already on PATH verifies no reinstall.
+  #R065
+  create_brew_stub
+  create_1psa_stub
+  cat > "${STUB_BIN}/go" <<'EOF'
+#!/bin/bash
+if [ "$1" = "version" ]; then
+  echo "go version go1.22.9 darwin/arm64"
+  exit 0
+fi
+if [ "$1" = "install" ]; then
+  TOOL_NAME="$(basename "$2")"
+  TOOL_NAME="${TOOL_NAME%%@*}"
+  cat > "${STUB_BIN}/${TOOL_NAME}" <<'INNER'
+#!/bin/bash
+exit 0
+INNER
+  chmod +x "${STUB_BIN}/${TOOL_NAME}"
+  exit 0
+fi
+exit 0
+EOF
+  chmod +x "${STUB_BIN}/go"
+  cat > "${STUB_BIN}/parallel" <<'EOF'
+#!/bin/bash
+exit 0
+EOF
+  chmod +x "${STUB_BIN}/parallel"
+  run env PATH="${STUB_BIN}:/usr/bin:/bin" BREW_LOG="${TMP_ROOT}/brew.log" STUB_BIN="${STUB_BIN}" ZAP_APP_PATH="${ZAP_APP_PATH}" /bin/bash "${SCRIPT_PATH}"
+  [ "$status" -eq 0 ]
+  [[ "${output}" == *"[parallel] Available on PATH"* ]]
+  if [ -f "${TMP_ROOT}/brew.log" ]; then
+    run rg "^install parallel$" "${TMP_ROOT}/brew.log"
+    [ "$status" -ne 0 ]
+  fi
 }
 
 @test "R060: skips gremlins install when already available" {

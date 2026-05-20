@@ -116,6 +116,14 @@ ensure_lint_tools() {
     ensure_brew_formula "golangci-lint" "golangci-lint"
 }
 
+ensure_test_runtime_tools() {
+    #R065: Ensure test-runtime helpers are available. GNU `parallel` unlocks
+    # `bats -j N` (native within-file parallelism) for the unit-test runner;
+    # `05_run_unit_tests.sh` falls back to BSD `xargs -P` automatically when
+    # parallel is not on PATH, so this remains an optional accelerator.
+    ensure_brew_formula "parallel" "parallel"
+}
+
 ensure_sast_tools() {
     #R030: Ensure SAST tooling required by this repository is available.
     ensure_brew_formula "shellcheck" "shellcheck"
@@ -306,6 +314,7 @@ main() {
     ensure_dast_tools
     ensure_gremlins
     ensure_1psa
+    ensure_test_runtime_tools
     print_final_guidance
 }
 
